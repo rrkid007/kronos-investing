@@ -5,6 +5,10 @@ min_cash_reserve_pct: 10.0  # cash floor as % of equity
 min_final_score: 70.0       # decisions below this are never tradable
 restricted_assets: []       # tickers that may never be traded
 
+# Per-agent score floors for buys. A dead/absent agent is not blocking.
+min_agent_scores:
+  kronos: 25.0              # never buy against a strongly negative forecast
+
 require_human_approval: true  # manual approval queue (locked decision 2026-06-11)
 
 paper_account:

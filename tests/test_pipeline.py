@@ -193,8 +193,8 @@ def test_rerunning_same_date_does_not_duplicate(tmp_config, fake_market_data):
     conn = connect(tmp_config.db_path)
     n_runs = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
     assert n_runs == 2
-    # per ticker: 5 agents + market_data + decision; plus 1 run-level portfolio stage
-    per_run = len(tmp_config.watchlist.symbols) * (len(AGENT_STAGES) + 2) + 1
+    # per ticker: 5 agents + market_data + decision; plus run-level portfolio + risk
+    per_run = len(tmp_config.watchlist.symbols) * (len(AGENT_STAGES) + 2) + 2
     for rid in (run_id_1, run_id_2):
         n = conn.execute(
             "SELECT COUNT(*) FROM run_stages WHERE run_id = ?", (rid,)
@@ -301,3 +301,48 @@ def test_held_position_stop_loss_produces_sell(tmp_config, fake_market_data):
     assert row["action"] == "sell"
     assert row["reason"].startswith("stop_loss")
     assert row["sizing_hint"] == 10  # whole position
+
+
+def test_risk_engine_evaluates_trades_and_logs(tmp_config, fake_market_data):
+    """Sells and portfolio-approved buys get risk results + risk_events rows."""
+    import json
+
+    conn = connect(tmp_config.db_path)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO positions (ticker, qty, avg_cost, opened_at, updated_at) "
+        "VALUES ('AAPL', 10, 1000.0, '2026-06-05', '2026-06-05')",
+    )  # deep underwater -> stop-loss sell
+    conn.commit()
+    conn.close()
+
+    run_id = run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
+
+    conn = connect(tmp_config.db_path)
+    events = conn.execute(
+        "SELECT ticker, approved FROM risk_events WHERE run_id = ?", (run_id,)
+    ).fetchall()
+    assert events, "risk engine logged nothing"
+
+    sell_row = conn.execute(
+        "SELECT signal_breakdown FROM decisions WHERE run_id = ? AND ticker = 'AAPL'",
+        (run_id,),
+    ).fetchone()
+    payload = json.loads(sell_row["signal_breakdown"])
+    assert payload["risk"]["approved"] is True  # the exit cleared risk
+    assert payload["risk"]["side"] == "sell"
+    assert payload["risk"]["requires_human_approval"] is True
+
+    # Any portfolio-approved buy must also carry a risk verdict
+    buys = conn.execute(
+        "SELECT signal_breakdown FROM decisions WHERE run_id = ? AND action = 'buy'",
+        (run_id,),
+    ).fetchall()
+    for b in buys:
+        p = json.loads(b["signal_breakdown"])
+        if p.get("portfolio", {}).get("approved"):
+            assert "risk" in p
+    conn.close()
+
+    report_text = (tmp_config.reports_dir / "daily" / "2026-06-11.md").read_text(encoding="utf-8")
+    assert "Risk" in report_text

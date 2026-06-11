@@ -103,4 +103,14 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   live: Yahoo's intraday partial bars (which carry the prior session's open)
   are dropped and purged — daily analysis only ever sees completed bars.
 
-See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 7 (Risk Engine).
+- **Phase 7 (Risk Engine)** — complete: pure-Python deterministic safety
+  layer (no AI) that independently re-derives every constraint rather than
+  trusting upstream sizing — final-score floor, per-agent floors (config
+  `min_agent_scores`, e.g. never buy against a deeply negative Kronos
+  forecast; dead agents are not blocking), restricted assets, position/sector
+  caps, cash sufficiency, and the reserve floor. All violations are named
+  (not just the first), every evaluation lands in `risk_events`, and sells
+  are exempt from exposure rules by design — blocking a stop-loss is itself
+  a risk. 30 dedicated tests covering pass/fail/boundary per rule.
+
+See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 8 (Paper Trading Engine + approval queue).

@@ -46,6 +46,7 @@ from trading_platform.core.runs import (
 )
 from trading_platform.data.market_data import MarketDataService
 from trading_platform.execution.account import load_cash, load_positions
+from trading_platform.risk.engine import RiskEngine, log_risk_event
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ AGENT_STAGES = ["technical", "kronos", "fundamentals", "news", "sec_filing"]
 DATA_STAGE = "market_data"
 DECISION_STAGE = "decision"
 PORTFOLIO_STAGE = "portfolio"
+RISK_STAGE = "risk"
 
 
 def build_agent_registry(config: AppConfig, conn=None) -> dict:
@@ -144,6 +146,13 @@ def run_daily(
         mark_stage(conn, run_id, PORTFOLIO_STAGE, "completed",
                    detail=f"{n_approved} buy(s) sized and approved")
 
+        # --- pass 4: risk engine re-validates every proposed trade
+        mark_stage(conn, run_id, RISK_STAGE, "running")
+        n_cleared = _risk_pass(conn, config, run_id, decisions, frames,
+                               positions, held_by_ticker)
+        mark_stage(conn, run_id, RISK_STAGE, "completed",
+                   detail=f"{n_cleared} trade(s) cleared risk")
+
         _write_report(conn, config, run_id, run_date, skipped)
         complete_run(conn, run_id)
         logger.info("run %s completed (%d tickers skipped)", run_id, len(skipped))
@@ -163,8 +172,8 @@ def _load_signals(conn, run_id: str, symbol: str) -> dict[str, tuple[float, floa
     return {r["agent"]: (r["score"], r["confidence"]) for r in rows}
 
 
-def _assess_buys(conn, config, decisions, frames, positions) -> int:
-    """Rank buys by final score and size them against a running state."""
+def _portfolio_state(conn, config, frames, positions) -> PortfolioState:
+    """Mark-to-market account view: cash + positions valued at last close."""
     sector_values: dict[str, float] = {}
     pos_value = 0.0
     for p in positions:
@@ -176,10 +185,15 @@ def _assess_buys(conn, config, decisions, frames, positions) -> int:
         sector_values[sector] = sector_values.get(sector, 0.0) + value
 
     cash = load_cash(conn, config)
-    state = PortfolioState(
+    return PortfolioState(
         cash=cash, equity=cash + pos_value,
         positions=positions, sector_values=sector_values,
     )
+
+
+def _assess_buys(conn, config, decisions, frames, positions) -> int:
+    """Rank buys by final score and size them against a running state."""
+    state = _portfolio_state(conn, config, frames, positions)
     agent = PortfolioAgent(config.risk, config.watchlist)
 
     buys = sorted(
@@ -199,6 +213,54 @@ def _assess_buys(conn, config, decisions, frames, positions) -> int:
             approved += 1
         save_decision(conn, decision)
     return approved
+
+
+def _risk_pass(conn, config, run_id, decisions, frames, positions, held_by_ticker) -> int:
+    """Independently re-validate every proposed trade; log all evaluations.
+
+    Buys are checked strongest-first against a fresh running state (sell
+    proceeds are NOT credited — fills happen T+1, so today's buys must fit
+    today's cash). Sells are exits and only sanity-checked.
+    """
+    engine = RiskEngine(config.risk, config.watchlist)
+    state = _portfolio_state(conn, config, frames, positions)
+    cleared = 0
+
+    for decision in decisions.values():
+        if decision.action != Action.SELL:
+            continue
+        price = _last_close(frames, decision.ticker)
+        result = engine.evaluate_sell(decision, held_by_ticker.get(decision.ticker), price)
+        log_risk_event(conn, run_id, result)
+        decision.signal_breakdown["risk"] = result.model_dump()
+        save_decision(conn, decision)
+        cleared += result.approved
+
+    buys = sorted(
+        (d for d in decisions.values()
+         if d.action == Action.BUY
+         and d.signal_breakdown.get("portfolio", {}).get("approved")),
+        key=lambda d: d.final_score, reverse=True,
+    )
+    for decision in buys:
+        qty = decision.signal_breakdown["portfolio"]["qty"]
+        price = _last_close(frames, decision.ticker)
+        result = engine.evaluate_buy(decision, qty, price, state)
+        log_risk_event(conn, run_id, result)
+        decision.signal_breakdown["risk"] = result.model_dump()
+        save_decision(conn, decision)
+        if result.approved:
+            sector = config.watchlist.sector_of(decision.ticker) or "Unknown"
+            state.apply_buy(decision.ticker, sector, qty * price)
+            cleared += 1
+        else:
+            logger.warning("risk blocked %s buy: %s", decision.ticker, result.errors)
+    return cleared
+
+
+def _last_close(frames: dict, ticker: str) -> float | None:
+    df = frames.get(ticker)
+    return float(df["close"].iloc[-1]) if df is not None else None
 
 
 def _run_agent_stage(
@@ -266,23 +328,35 @@ def _write_report(
         "",
     ]
 
+    import json as _json
+
     decisions = conn.execute(
-        "SELECT ticker, action, final_score, sizing_hint, reason FROM decisions "
-        "WHERE run_id = ? ORDER BY final_score DESC",
+        "SELECT ticker, action, final_score, sizing_hint, reason, signal_breakdown "
+        "FROM decisions WHERE run_id = ? ORDER BY final_score DESC",
         (run_id,),
     ).fetchall()
     if decisions:
         lines += [
             "## Decisions",
             "",
-            "| Ticker | Action | Final Score | Size | Reason |",
-            "|--------|--------|------------:|-----:|--------|",
+            "| Ticker | Action | Final Score | Size | Risk | Reason |",
+            "|--------|--------|------------:|-----:|------|--------|",
         ]
         for d in decisions:
             size = f"${d['sizing_hint']:,.0f}" if d["sizing_hint"] else "—"
+            payload = _json.loads(d["signal_breakdown"] or "{}")
+            risk = payload.get("risk")
+            if risk is None:
+                risk_cell = "—"
+            elif risk["approved"]:
+                risk_cell = "✓ cleared"
+            else:
+                first_error = (risk.get("checks") and
+                               next((c["detail"] for c in risk["checks"] if not c["passed"]), ""))
+                risk_cell = f"✗ {first_error[:40]}"
             lines.append(
                 f"| {d['ticker']} | **{d['action']}** | {d['final_score']:.1f} "
-                f"| {size} | {d['reason'][:70]} |"
+                f"| {size} | {risk_cell} | {d['reason'][:60]} |"
             )
         lines += [""]
 

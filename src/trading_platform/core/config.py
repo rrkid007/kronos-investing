@@ -146,6 +146,10 @@ class RiskLimits(BaseModel):
     min_cash_reserve_pct: float = 10.0
     min_final_score: float = 70.0
     restricted_assets: list[str] = Field(default_factory=list)
+    # Per-agent score floors for buys, e.g. {kronos: 25}. An agent that is
+    # dead (zero confidence) or absent is NOT blocking — overall signal
+    # quality is the decision layer's coverage floor's job.
+    min_agent_scores: dict[str, float] = Field(default_factory=dict)
     require_human_approval: bool = True
     paper_account: PaperAccount = PaperAccount()
     sizing: SizingSettings = SizingSettings()
