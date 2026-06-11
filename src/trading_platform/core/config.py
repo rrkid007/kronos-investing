@@ -61,6 +61,16 @@ class DashboardSettings(BaseModel):
     port: int = 8420
 
 
+class ExecutionSettings(BaseModel):
+    # "local": internal simulated fills at next open (default).
+    # "alpaca_paper": route approved orders to Alpaca's PAPER endpoint as
+    # market-on-open orders; fills sync back on the next run. Live trading is
+    # not implemented anywhere in this codebase.
+    broker: Literal["local", "alpaca_paper"] = "local"
+    alpaca_key_env: str = "ALPACA_API_KEY_ID"
+    alpaca_secret_env: str = "ALPACA_API_SECRET_KEY"
+
+
 class Settings(BaseModel):
     db_path: Path = Path("db/investment_research.sqlite")
     reports_dir: Path = Path("reports")
@@ -73,6 +83,7 @@ class Settings(BaseModel):
     notifications: NotificationSettings = NotificationSettings()
     schedule: ScheduleSettings = ScheduleSettings()
     dashboard: DashboardSettings = DashboardSettings()
+    execution: ExecutionSettings = ExecutionSettings()
 
 
 class WatchlistEntry(BaseModel):

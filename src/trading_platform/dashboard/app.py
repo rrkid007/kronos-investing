@@ -18,7 +18,8 @@ from trading_platform.analytics.performance import performance_summary
 from trading_platform.core.config import AppConfig, load_config
 from trading_platform.core.db import connect, init_db
 from trading_platform.dashboard import queries
-from trading_platform.execution.orders import approve_order, reject_order
+from trading_platform.execution.approval import approve_and_submit
+from trading_platform.execution.orders import reject_order
 from trading_platform.pipeline import AGENT_STAGES
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -105,7 +106,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         try:
             flash = None
             try:
-                action(conn, order_id)
+                flash = action(conn, order_id)  # approval returns a status message
             except ValueError as exc:
                 flash = str(exc)
             return templates.TemplateResponse(
@@ -117,7 +118,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
 
     @app.post("/orders/{order_id}/approve", response_class=HTMLResponse)
     def approve(request: Request, order_id: str):
-        return _decide(request, order_id, approve_order)
+        return _decide(request, order_id,
+                       lambda conn, oid: approve_and_submit(conn, config, oid))
 
     @app.post("/orders/{order_id}/reject", response_class=HTMLResponse)
     def reject(request: Request, order_id: str):

@@ -75,7 +75,27 @@ safely.
 4. Reports land in `reports/daily/`, the audit trail in
    `db/investment_research.sqlite`.
 
-## 6. Health checks
+## 6. Optional: Alpaca paper broker
+
+By default fills are simulated internally. To route approved orders through
+Alpaca's **paper** API instead (real market-on-open executions against fake
+money):
+
+1. Create a paper account at alpaca.markets and generate paper API keys.
+2. Add to `/etc/trading-platform.env`:
+   ```
+   ALPACA_API_KEY_ID=...
+   ALPACA_API_SECRET_KEY=...
+   ```
+3. Set `execution.broker: alpaca_paper` in `config/settings.yaml`.
+
+Approving an order then submits it to Alpaca immediately (market-on-open, so
+an approval on evening T fills at T+1's open — same convention as local).
+The next daily run syncs real fill prices into the local ledger and
+reconciles positions/cash, logging any drift. The base URL is hard-coded to
+the paper endpoint; live trading is not implemented anywhere in this codebase.
+
+## 7. Health checks
 
 ```bash
 uv run python scripts/refresh_market_data.py   # data + quality gate pass

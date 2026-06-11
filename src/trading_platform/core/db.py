@@ -10,9 +10,9 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
-# Version 1: full base schema.
+# Version 1: full base schema. Version 2: broker routing columns (phase 13).
 MIGRATIONS: dict[int, str] = {
     1: """
     CREATE TABLE runs (
@@ -156,6 +156,10 @@ MIGRATIONS: dict[int, str] = {
     CREATE INDEX idx_orders_status ON orders(status);
     CREATE INDEX idx_fills_ticker ON fills(ticker);
     CREATE INDEX idx_news_ticker ON news_items(ticker);
+    """,
+    2: """
+    ALTER TABLE orders ADD COLUMN broker TEXT NOT NULL DEFAULT 'local';
+    ALTER TABLE orders ADD COLUMN broker_order_id TEXT;
     """,
 }
 

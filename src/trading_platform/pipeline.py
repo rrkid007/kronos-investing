@@ -289,10 +289,20 @@ def _assess_buys(conn, config, decisions, frames, positions) -> int:
 def _process_fills(conn, config, market_data, run_date, as_of, frames) -> int:
     """Fill approved orders from earlier runs at today's open.
 
-    An order whose ticker has no completed bar for today (halt, data issue)
-    stays approved and is retried next run. A fill the broker refuses
-    (e.g. selling an absent position) is cancelled with the reason noted.
+    With broker=alpaca_paper, real fills sync back from Alpaca instead of
+    simulating; drift between ledgers is logged. Locally: an order whose
+    ticker has no completed bar today (halt, data issue) stays approved and
+    is retried next run; a fill the broker refuses (e.g. selling an absent
+    position) is cancelled with the reason noted.
     """
+    if config.settings.execution.broker == "alpaca_paper":
+        from trading_platform.execution.alpaca_sync import sync_alpaca
+
+        result = sync_alpaca(conn, config, as_of)
+        if result["drift"]:
+            logger.warning("alpaca reconciliation drift: %s", result["drift"])
+        return result["filled"]
+
     filled = 0
     for order in fillable_orders(conn, run_date):
         ticker = order["ticker"]

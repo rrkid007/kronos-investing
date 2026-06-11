@@ -16,7 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from trading_platform.core.config import load_config
 from trading_platform.core.db import connect, init_db
-from trading_platform.execution.orders import approve_order, list_pending, reject_order
+from trading_platform.execution.approval import approve_and_submit
+from trading_platform.execution.orders import list_pending, reject_order
 
 
 def show_pending(conn) -> None:
@@ -54,14 +55,12 @@ def main() -> None:
     if args.approve_all:
         pending = list_pending(conn)
         for o in pending:
-            approve_order(conn, o["order_id"])
-            print(f"approved {o['order_id']} ({o['side']} {o['ticker']} x{o['qty']:g})")
+            print(approve_and_submit(conn, config, o["order_id"]))
         if not pending:
             print("nothing to approve")
     elif args.approve or args.reject:
         for order_id in args.approve or []:
-            approve_order(conn, order_id)
-            print(f"approved {order_id}")
+            print(approve_and_submit(conn, config, order_id))
         for order_id in args.reject or []:
             reject_order(conn, order_id)
             print(f"rejected {order_id}")

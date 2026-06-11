@@ -42,3 +42,9 @@ notifications:
 schedule:
   run_after_close_local: "17:30"
   weekdays_only: true
+
+execution:
+  # local = internal simulated fills (default). alpaca_paper = route approved
+  # orders to Alpaca's PAPER endpoint (keys via ALPACA_API_KEY_ID /
+  # ALPACA_API_SECRET_KEY env vars). Live trading is not implemented.
+  broker: local

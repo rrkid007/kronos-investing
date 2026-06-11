@@ -43,18 +43,39 @@ def fill_order(
     open_price: float,
     fill_model: FillModel,
 ) -> dict:
-    """Execute one approved order at the given open price. Returns fill facts."""
+    """Execute one approved order at the given open price (local simulation)."""
     slip = fill_model.slippage_bps / 10_000.0
-    commission = fill_model.commission_per_trade
+    exec_price = (open_price * (1 + slip) if order["side"] == "buy"
+                  else open_price * (1 - slip))
+    return apply_fill(conn, order, fill_date, exec_price,
+                      fill_model.commission_per_trade,
+                      raw_price=open_price)
+
+
+def apply_fill(
+    conn: sqlite3.Connection,
+    order: sqlite3.Row,
+    fill_date: date,
+    exec_price: float,
+    commission: float = 0.0,
+    raw_price: float | None = None,
+    enforce_cash: bool = True,
+) -> dict:
+    """Record a fill at an explicit execution price — the single accounting
+    path for both simulated fills and real broker (Alpaca paper) fills.
+
+    enforce_cash=False is for external fills: the broker already executed, so
+    the local ledger must record reality; any resulting negative cash is
+    surfaced by reconciliation, not hidden by a refusal."""
     qty = float(order["qty"])
     ticker = order["ticker"]
     now = utcnow().isoformat()
+    raw_price = raw_price if raw_price is not None else exec_price
 
     if order["side"] == "buy":
-        exec_price = open_price * (1 + slip)
         cost = qty * exec_price + commission
         account = get_account(conn)
-        if cost > account["cash"] + 1e-9:
+        if enforce_cash and cost > account["cash"] + 1e-9:
             raise FillError(
                 f"insufficient cash: need {cost:.2f}, have {account['cash']:.2f}"
             )
@@ -80,7 +101,6 @@ def fill_order(
         )
         realized = 0.0
     else:  # sell
-        exec_price = open_price * (1 - slip)
         position = conn.execute(
             "SELECT qty, avg_cost FROM positions WHERE ticker = ?", (ticker,)
         ).fetchone()
@@ -111,7 +131,7 @@ def fill_order(
         "commission, filled_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             fill_id, order["order_id"], ticker, order["side"], qty,
-            round(exec_price, 6), round(abs(exec_price - open_price) * qty, 6),
+            round(exec_price, 6), round(abs(exec_price - raw_price) * qty, 6),
             commission, fill_date.isoformat(),
         ),
     )

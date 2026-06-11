@@ -167,4 +167,16 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   blend has to earn its keep, exactly what the platform exists to measure.
   `uv run python scripts/run_backtest.py --years 2 --sweep`
 
-See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 13 (Alpaca paper broker integration).
+- **Phase 13 (Alpaca paper broker)** — complete: opt-in
+  `execution.broker: alpaca_paper` routes approved orders to Alpaca's PAPER
+  endpoint as market-on-open orders (submitted at approval time, so the
+  T+1-open fill convention is preserved; `client_order_id` makes retries
+  idempotent). The next run syncs real fill prices through the same
+  accounting path as simulated fills and reconciles positions/cash against
+  Alpaca, surfacing (never auto-fixing) drift. The paper base URL is
+  hard-coded — live trading is structurally impossible, and a test enforces
+  it. Schema migrated v1→v2 (broker columns) via the versioned migration
+  path. Live round-trip verification awaits Alpaca paper keys (see
+  [deploy/SETUP.md](deploy/SETUP.md) §6).
+
+**All 13 planned phases are complete.** See [PLAN.md](PLAN.md) §3 for the roadmap.
