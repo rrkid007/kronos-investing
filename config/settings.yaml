@@ -25,6 +25,14 @@ news:
   # Finnhub key is read from this environment variable — never stored in config.
   finnhub_api_key_env: FINNHUB_API_KEY
   rss_feeds: []
+  lookback_days: 7
+  max_items: 25
+
+sec:
+  # EDGAR requires a descriptive User-Agent with contact info.
+  identity: "Peak Logic info@peaklogic.ai"
+  max_risk_chars: 10000
+  max_mdna_chars: 6000
 
 notifications:
   enabled: false

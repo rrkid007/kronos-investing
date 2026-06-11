@@ -29,6 +29,26 @@ def canned_kronos(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def canned_llm_agents(monkeypatch):
+    """Pipeline tests never hit Ollama, Finnhub, or EDGAR.
+
+    Real agent code runs, but fetches are canned and the LLM is dead — so the
+    pipeline exercises the neutral-fallback paths end to end.
+    """
+    from tests.fixtures import make_news_items
+    from trading_platform.agents.news import NewsAgent
+    from trading_platform.agents.sec_filing import SECFilingAgent
+    from trading_platform.core.llm import LLMError, OllamaClient
+
+    def dead_llm(self, *args, **kwargs):
+        raise LLMError("no ollama in tests")
+
+    monkeypatch.setattr(NewsAgent, "_fetch", lambda self, t: make_news_items(t))
+    monkeypatch.setattr(SECFilingAgent, "_fetch", lambda self, t: None)
+    monkeypatch.setattr(OllamaClient, "generate", dead_llm)
+
+
 def test_run_daily_writes_run_row_and_report(tmp_config, fake_market_data):
     run_id = run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
 

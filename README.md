@@ -81,4 +81,15 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   degrades to an ignorable neutral score. CPU benchmark: ~10s/ticker
   (8 paths, Kronos-small); switch `model_id` to Kronos-base on the DGX.
 
-See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 5 (News + SEC Filing agents).
+- **Phase 5 (News + SEC Filing agents)** — complete: Ollama client with
+  grammar-constrained JSON (pydantic schema as Ollama `format`), validation
+  retry, and hard LLMError → neutral fallback. News: yfinance + Finnhub
+  ingestion, headline-hash dedupe, LLM classification where every key driver
+  must cite a real headline index (ungrounded drivers dropped; no grounding
+  caps confidence at 0.4). SEC: edgartools 10-K/10-Q section extraction, LLM
+  risk findings that must quote the filing verbatim (ungrounded findings
+  dropped), analyses cached per accession number so each filing hits the LLM
+  once. Dev LLM: any local Ollama model (tested with gpt-oss:20b); DGX target
+  is qwen2.5:32b-instruct per config.
+
+See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 6 (Trade Decision + Portfolio agents).

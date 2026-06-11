@@ -17,7 +17,10 @@ import pandas as pd
 
 from trading_platform.agents.fundamentals import FundamentalsAgent
 from trading_platform.agents.kronos import KronosAgent
+from trading_platform.agents.news import NewsAgent
+from trading_platform.agents.sec_filing import SECFilingAgent
 from trading_platform.agents.technical import TechnicalAgent
+from trading_platform.core.llm import OllamaClient
 from trading_platform.core.config import AppConfig
 from trading_platform.core.db import connect, init_db
 from trading_platform.core.models import AgentResult
@@ -39,13 +42,17 @@ AGENT_STAGES = ["technical", "kronos", "fundamentals", "news", "sec_filing"]
 DATA_STAGE = "market_data"
 
 
-def build_agent_registry(config: AppConfig) -> dict:
+def build_agent_registry(config: AppConfig, conn=None) -> dict:
     """One agent instance per run — the Kronos model loads once and is reused
-    across every ticker in the scan."""
+    across every ticker in the scan; News/SEC share one LLM client and use the
+    run's connection for persistence and the filing cache."""
+    llm = OllamaClient(config.settings.llm)
     return {
         "technical": TechnicalAgent(),
         "fundamentals": FundamentalsAgent(),
         "kronos": KronosAgent(config.settings.kronos),
+        "news": NewsAgent(config, llm=llm, conn=conn),
+        "sec_filing": SECFilingAgent(config, llm=llm, conn=conn),
     }
 
 
@@ -72,7 +79,7 @@ def run_daily(
         run_id = create_run(conn, run_date)
         logger.info("created run %s for %s", run_id, run_date)
 
-    registry = build_agent_registry(config)
+    registry = build_agent_registry(config, conn=conn)
     skipped: dict[str, str] = {}  # ticker -> reason, for the report
     try:
         for symbol in config.watchlist.symbols:

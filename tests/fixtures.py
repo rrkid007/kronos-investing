@@ -71,6 +71,41 @@ def make_ohlcv(
     )
 
 
+class FakeLLM:
+    """Returns a canned response object; optionally raises instead."""
+
+    def __init__(self, response=None, fail: Exception | None = None):
+        self.response = response
+        self.fail = fail
+        self.calls = 0
+
+    def generate(self, prompt, response_model, system=None, retries=2):
+        self.calls += 1
+        if self.fail is not None:
+            raise self.fail
+        return self.response
+
+
+def make_news_items(ticker: str = "TEST", n: int = 5):
+    from datetime import datetime, timedelta, timezone
+
+    from trading_platform.data.news import NewsItem, _hash_headline
+
+    base = datetime(2026, 6, 10, 12, 0, tzinfo=timezone.utc)
+    return [
+        NewsItem(
+            ticker=ticker,
+            source="testwire",
+            headline=f"{ticker} headline number {i}",
+            summary=f"summary {i}",
+            url=f"https://example.com/{i}",
+            published_at=base - timedelta(hours=i),
+            content_hash=_hash_headline(f"{ticker} headline number {i}"),
+        )
+        for i in range(n)
+    ]
+
+
 class FakeForecaster:
     """Deterministic Kronos stand-in: linear paths to a configurable return."""
 

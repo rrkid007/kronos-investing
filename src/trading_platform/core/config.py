@@ -35,6 +35,15 @@ class KronosSettings(BaseModel):
 class NewsSettings(BaseModel):
     finnhub_api_key_env: str = "FINNHUB_API_KEY"
     rss_feeds: list[str] = Field(default_factory=list)
+    lookback_days: int = 7
+    max_items: int = 25
+
+
+class SECSettings(BaseModel):
+    # EDGAR requires a descriptive User-Agent with contact info.
+    identity: str = "Peak Logic info@peaklogic.ai"
+    max_risk_chars: int = 10_000
+    max_mdna_chars: int = 6_000
 
 
 class NotificationSettings(BaseModel):
@@ -54,6 +63,7 @@ class Settings(BaseModel):
     llm: LLMSettings = LLMSettings()
     kronos: KronosSettings = KronosSettings()
     news: NewsSettings = NewsSettings()
+    sec: SECSettings = SECSettings()
     notifications: NotificationSettings = NotificationSettings()
     schedule: ScheduleSettings = ScheduleSettings()
 
