@@ -11,6 +11,9 @@ thresholds:
   buy_score: 70.0       # final score >= this -> buy candidate
   watchlist_score: 60.0 # final score >= this -> watchlist
   exit_score: 45.0      # held position scoring below this -> score-decay exit
+  # Minimum weighted signal coverage (sum w*conf / sum w) to open a position
+  # or fire a score-decay exit. Price-based exits ignore this.
+  min_signal_coverage: 0.25
 
 exit_policy:
   stop_loss_pct: 8.0

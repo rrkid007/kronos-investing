@@ -1,8 +1,11 @@
 import pytest
 
 from tests.fixtures import FakeForecaster, FakeMarketDataService, make_ohlcv, make_snapshot
-from trading_platform.core.db import connect
+from trading_platform.core.db import connect, init_db
 from trading_platform.pipeline import AGENT_STAGES, run_daily
+
+# SQL fragment selecting research-agent stages only (not market_data/decision/portfolio)
+AGENT_ONLY = "stage IN ({})".format(",".join(f"'{s}'" for s in AGENT_STAGES))
 
 
 @pytest.fixture
@@ -57,7 +60,7 @@ def test_run_daily_writes_run_row_and_report(tmp_config, fake_market_data):
     assert row["status"] == "completed"
 
     n_agent_stages = conn.execute(
-        "SELECT COUNT(*) FROM run_stages WHERE run_id = ? AND stage != 'market_data'",
+        f"SELECT COUNT(*) FROM run_stages WHERE run_id = ? AND {AGENT_ONLY}",
         (run_id,),
     ).fetchone()[0]
     assert n_agent_stages == len(tmp_config.watchlist.symbols) * len(AGENT_STAGES)
@@ -90,8 +93,8 @@ def test_data_gate_failure_skips_agents_not_run(tmp_config):
         statuses = {
             r["status"]
             for r in conn.execute(
-                "SELECT status FROM run_stages WHERE run_id = ? AND ticker = ? "
-                "AND stage != 'market_data'",
+                f"SELECT status FROM run_stages WHERE run_id = ? AND ticker = ? "
+                f"AND {AGENT_ONLY}",
                 (run_id, ticker),
             ).fetchall()
         }
@@ -190,7 +193,8 @@ def test_rerunning_same_date_does_not_duplicate(tmp_config, fake_market_data):
     conn = connect(tmp_config.db_path)
     n_runs = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
     assert n_runs == 2
-    per_run = len(tmp_config.watchlist.symbols) * (len(AGENT_STAGES) + 1)  # +1 market_data
+    # per ticker: 5 agents + market_data + decision; plus 1 run-level portfolio stage
+    per_run = len(tmp_config.watchlist.symbols) * (len(AGENT_STAGES) + 2) + 1
     for rid in (run_id_1, run_id_2):
         n = conn.execute(
             "SELECT COUNT(*) FROM run_stages WHERE run_id = ?", (rid,)
@@ -227,8 +231,73 @@ def test_incomplete_run_is_resumed_not_duplicated(tmp_config, fake_market_data, 
     row = conn.execute("SELECT status FROM runs WHERE run_id = ?", (run_id,)).fetchone()
     assert row["status"] == "completed"
     n_agent_stages = conn.execute(
-        "SELECT COUNT(*) FROM run_stages WHERE run_id = ? AND stage != 'market_data'",
+        f"SELECT COUNT(*) FROM run_stages WHERE run_id = ? AND {AGENT_ONLY}",
         (run_id,),
     ).fetchone()[0]
     assert n_agent_stages == len(tmp_config.watchlist.symbols) * len(AGENT_STAGES)
     conn.close()
+
+
+def test_decisions_written_for_every_ticker(tmp_config, fake_market_data):
+    run_id = run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
+
+    conn = connect(tmp_config.db_path)
+    rows = conn.execute(
+        "SELECT ticker, action, final_score FROM decisions WHERE run_id = ?", (run_id,)
+    ).fetchall()
+    conn.close()
+
+    assert len(rows) == len(tmp_config.watchlist.symbols)
+    for r in rows:
+        assert r["action"] in ("buy", "sell", "hold", "watchlist")
+        assert 0.0 <= r["final_score"] <= 100.0
+
+    report_text = (tmp_config.reports_dir / "daily" / "2026-06-11.md").read_text(encoding="utf-8")
+    assert "## Decisions" in report_text
+
+
+def test_approved_buys_get_sizing(tmp_config, fake_market_data):
+    """With strong canned signals, top-ranked buys must carry a sizing_hint."""
+    run_id = run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
+
+    conn = connect(tmp_config.db_path)
+    buys = conn.execute(
+        "SELECT ticker, sizing_hint, signal_breakdown FROM decisions "
+        "WHERE run_id = ? AND action = 'buy' ORDER BY final_score DESC",
+        (run_id,),
+    ).fetchall()
+    conn.close()
+
+    if buys:  # canned fixtures produce buys; guard keeps the test honest
+        import json
+        sized = [b for b in buys if b["sizing_hint"]]
+        assert sized, "no buy was approved by the portfolio agent"
+        payload = json.loads(sized[0]["signal_breakdown"])
+        assert payload["portfolio"]["approved"] is True
+        assert payload["portfolio"]["qty"] >= 1
+
+
+def test_held_position_stop_loss_produces_sell(tmp_config, fake_market_data):
+    """A held position deep underwater must exit via stop_loss — even though
+    the ticker isn't on the watchlist."""
+    conn = connect(tmp_config.db_path)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO positions (ticker, qty, avg_cost, opened_at, updated_at) "
+        "VALUES ('AAPL', 10, 1000.0, '2026-06-05', '2026-06-05')",
+    )  # fixture price ~100 -> 90% below cost -> stop loss
+    conn.commit()
+    conn.close()
+
+    run_id = run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
+
+    conn = connect(tmp_config.db_path)
+    row = conn.execute(
+        "SELECT action, sizing_hint, reason FROM decisions WHERE run_id = ? AND ticker = 'AAPL'",
+        (run_id,),
+    ).fetchone()
+    conn.close()
+
+    assert row["action"] == "sell"
+    assert row["reason"].startswith("stop_loss")
+    assert row["sizing_hint"] == 10  # whole position

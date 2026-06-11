@@ -92,4 +92,15 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   once. Dev LLM: any local Ollama model (tested with gpt-oss:20b); DGX target
   is qwen2.5:32b-instruct per config.
 
-See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 6 (Trade Decision + Portfolio agents).
+- **Phase 6 (Decision + Portfolio agents)** — complete: confidence-weighted
+  aggregation (`Σ w·c·s / Σ w·c`) where dead signals drop out instead of
+  dragging the score to 50, a coverage floor that blocks entries on thin
+  signal, the full exit policy (stop-loss → take-profit → max-hold →
+  score-decay, in priority order; held tickers re-evaluated every run even
+  off-watchlist), and greedy portfolio sizing (base % of equity scaled by
+  score and inverse vol, trimmed by position cap, sector room, and the cash
+  reserve floor). Daily report now leads with the decision table. Also fixed
+  live: Yahoo's intraday partial bars (which carry the prior session's open)
+  are dropped and purged — daily analysis only ever sees completed bars.
+
+See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 7 (Risk Engine).

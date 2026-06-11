@@ -100,6 +100,9 @@ class Thresholds(BaseModel):
     buy_score: float = 70.0
     watchlist_score: float = 60.0
     exit_score: float = 45.0
+    # Minimum weighted signal coverage (sum of weight x confidence / sum of
+    # weight) required to open a position or trigger a score-decay exit.
+    min_signal_coverage: float = 0.25
 
 
 class ExitPolicy(BaseModel):
@@ -125,6 +128,13 @@ class PaperAccount(BaseModel):
     starting_cash: float = 100_000.0
 
 
+class SizingSettings(BaseModel):
+    base_position_pct: float = 10.0     # base position as % of equity
+    min_position_value: float = 1000.0  # reject buys smaller than this
+    target_vol: float = 0.25            # annualized; scales size inversely with vol
+    max_positions: int = 8
+
+
 class FillModel(BaseModel):
     slippage_bps: float = 5.0
     commission_per_trade: float = 0.0
@@ -138,6 +148,7 @@ class RiskLimits(BaseModel):
     restricted_assets: list[str] = Field(default_factory=list)
     require_human_approval: bool = True
     paper_account: PaperAccount = PaperAccount()
+    sizing: SizingSettings = SizingSettings()
     fill_model: FillModel = FillModel()
 
 

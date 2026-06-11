@@ -1,10 +1,19 @@
 """Daily pipeline orchestrator.
 
-Flow per ticker: market data refresh + quality gate, then each registered
-agent scores the ticker and persists an AgentResult. Stages without a
-registered agent are no-ops until their phase lands. An agent that crashes is
-isolated — the stage is marked failed, a neutral zero-confidence score is
-stored so the decision layer can ignore it, and the run continues.
+Per run:
+  pass 1 — per ticker (watchlist + currently held): market data refresh +
+           quality gate, then each registered research agent scores the
+           ticker and persists an AgentResult. Agent crashes are isolated to
+           a neutral zero-confidence score; the run continues.
+  pass 2 — Decision Engine: confidence-weighted aggregation of the stored
+           scores per ticker, exit checks for held positions. Decisions are
+           recomputed (upserted) on every invocation — they're pure functions
+           of stored scores.
+  pass 3 — Portfolio Agent: buy candidates ranked by final score consume
+           cash/sector room greedily; sizing and fit are written back onto
+           each decision.
+
+Stages without a registered agent are no-ops until their phase lands.
 """
 
 from __future__ import annotations
@@ -15,24 +24,28 @@ from pathlib import Path
 
 import pandas as pd
 
+from trading_platform.agents.decision import DecisionEngine
 from trading_platform.agents.fundamentals import FundamentalsAgent
 from trading_platform.agents.kronos import KronosAgent
 from trading_platform.agents.news import NewsAgent
+from trading_platform.agents.portfolio import PortfolioAgent, PortfolioState
 from trading_platform.agents.sec_filing import SECFilingAgent
 from trading_platform.agents.technical import TechnicalAgent
-from trading_platform.core.llm import OllamaClient
 from trading_platform.core.config import AppConfig
 from trading_platform.core.db import connect, init_db
-from trading_platform.core.models import AgentResult
+from trading_platform.core.llm import OllamaClient
+from trading_platform.core.models import Action, AgentResult, TradeDecision
 from trading_platform.core.runs import (
     complete_run,
     create_run,
     find_resumable_run,
     mark_stage,
     save_agent_result,
+    save_decision,
     stage_status,
 )
 from trading_platform.data.market_data import MarketDataService
+from trading_platform.execution.account import load_cash, load_positions
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +53,8 @@ logger = logging.getLogger(__name__)
 # no-ops until their phase lands.
 AGENT_STAGES = ["technical", "kronos", "fundamentals", "news", "sec_filing"]
 DATA_STAGE = "market_data"
+DECISION_STAGE = "decision"
+PORTFOLIO_STAGE = "portfolio"
 
 
 def build_agent_registry(config: AppConfig, conn=None) -> dict:
@@ -67,6 +82,7 @@ def run_daily(
     skips stages already completed. market_data is injectable for tests.
     """
     run_date = run_date or date.today().isoformat()
+    as_of = date.fromisoformat(run_date)
     conn = connect(config.db_path)
     init_db(conn)
     if market_data is None:
@@ -80,12 +96,20 @@ def run_daily(
         logger.info("created run %s for %s", run_id, run_date)
 
     registry = build_agent_registry(config, conn=conn)
+    positions = load_positions(conn)
+    held_by_ticker = {p.ticker: p for p in positions}
+    # Held tickers are always re-evaluated, even off-watchlist (exit policy).
+    symbols = list(config.watchlist.symbols)
+    symbols += [t for t in held_by_ticker if t not in symbols]
+
     skipped: dict[str, str] = {}  # ticker -> reason, for the report
+    frames: dict[str, pd.DataFrame] = {}
     try:
-        for symbol in config.watchlist.symbols:
-            df = _ensure_market_data(
-                conn, market_data, run_id, symbol, date.fromisoformat(run_date), skipped
-            )
+        # --- pass 1: data + research agents
+        for symbol in symbols:
+            df = _ensure_market_data(conn, market_data, run_id, symbol, as_of, skipped)
+            if df is not None:
+                frames[symbol] = df
             for stage in AGENT_STAGES:
                 if stage_status(conn, run_id, stage, symbol) == "completed":
                     continue
@@ -94,6 +118,31 @@ def run_daily(
                                detail=skipped.get(symbol, "market data unavailable"))
                     continue
                 _run_agent_stage(conn, registry, run_id, stage, symbol, df)
+
+        # --- pass 2: decisions (pure recompute from stored scores)
+        engine = DecisionEngine(config.weights)
+        decisions: dict[str, TradeDecision] = {}
+        for symbol in symbols:
+            mark_stage(conn, run_id, DECISION_STAGE, "running", ticker=symbol)
+            df = frames.get(symbol)
+            price = float(df["close"].iloc[-1]) if df is not None else None
+            decision = engine.decide(
+                symbol, run_id,
+                signals=_load_signals(conn, run_id, symbol),
+                position=held_by_ticker.get(symbol),
+                current_price=price,
+                today=as_of,
+            )
+            decisions[symbol] = decision
+            save_decision(conn, decision)
+            mark_stage(conn, run_id, DECISION_STAGE, "completed", ticker=symbol,
+                       detail=f"{decision.action.value}: {decision.reason[:80]}")
+
+        # --- pass 3: portfolio sizing for buys, strongest first
+        mark_stage(conn, run_id, PORTFOLIO_STAGE, "running")
+        n_approved = _assess_buys(conn, config, decisions, frames, positions)
+        mark_stage(conn, run_id, PORTFOLIO_STAGE, "completed",
+                   detail=f"{n_approved} buy(s) sized and approved")
 
         _write_report(conn, config, run_id, run_date, skipped)
         complete_run(conn, run_id)
@@ -104,6 +153,52 @@ def run_daily(
     finally:
         conn.close()
     return run_id
+
+
+def _load_signals(conn, run_id: str, symbol: str) -> dict[str, tuple[float, float]]:
+    rows = conn.execute(
+        "SELECT agent, score, confidence FROM agent_scores WHERE run_id = ? AND ticker = ?",
+        (run_id, symbol),
+    ).fetchall()
+    return {r["agent"]: (r["score"], r["confidence"]) for r in rows}
+
+
+def _assess_buys(conn, config, decisions, frames, positions) -> int:
+    """Rank buys by final score and size them against a running state."""
+    sector_values: dict[str, float] = {}
+    pos_value = 0.0
+    for p in positions:
+        df = frames.get(p.ticker)
+        price = float(df["close"].iloc[-1]) if df is not None else p.avg_cost
+        value = p.qty * price
+        pos_value += value
+        sector = config.watchlist.sector_of(p.ticker) or "Unknown"
+        sector_values[sector] = sector_values.get(sector, 0.0) + value
+
+    cash = load_cash(conn, config)
+    state = PortfolioState(
+        cash=cash, equity=cash + pos_value,
+        positions=positions, sector_values=sector_values,
+    )
+    agent = PortfolioAgent(config.risk, config.watchlist)
+
+    buys = sorted(
+        (d for d in decisions.values() if d.action == Action.BUY),
+        key=lambda d: d.final_score, reverse=True,
+    )
+    approved = 0
+    for decision in buys:
+        df = frames.get(decision.ticker)
+        price = float(df["close"].iloc[-1]) if df is not None else None
+        assessment = agent.assess_buy(decision, price, df, state)
+        decision.signal_breakdown["portfolio"] = assessment.model_dump()
+        decision.sizing_hint = assessment.target_value if assessment.approved else None
+        if assessment.approved:
+            sector = config.watchlist.sector_of(decision.ticker) or "Unknown"
+            state.apply_buy(decision.ticker, sector, assessment.target_value)
+            approved += 1
+        save_decision(conn, decision)
+    return approved
 
 
 def _run_agent_stage(
@@ -171,9 +266,29 @@ def _write_report(
         "",
     ]
 
+    decisions = conn.execute(
+        "SELECT ticker, action, final_score, sizing_hint, reason FROM decisions "
+        "WHERE run_id = ? ORDER BY final_score DESC",
+        (run_id,),
+    ).fetchall()
+    if decisions:
+        lines += [
+            "## Decisions",
+            "",
+            "| Ticker | Action | Final Score | Size | Reason |",
+            "|--------|--------|------------:|-----:|--------|",
+        ]
+        for d in decisions:
+            size = f"${d['sizing_hint']:,.0f}" if d["sizing_hint"] else "—"
+            lines.append(
+                f"| {d['ticker']} | **{d['action']}** | {d['final_score']:.1f} "
+                f"| {size} | {d['reason'][:70]} |"
+            )
+        lines += [""]
+
     rows = conn.execute(
         "SELECT ticker, agent, score, confidence, direction FROM agent_scores "
-        "WHERE run_id = ? ORDER BY score DESC, ticker",
+        "WHERE run_id = ? ORDER BY ticker, agent",
         (run_id,),
     ).fetchall()
     if rows:
@@ -196,8 +311,7 @@ def _write_report(
         lines += [""]
 
     lines += [
-        "_Decisions, risk results, and account summary will appear here as "
-        "phases land._",
+        "_Risk results and account summary will appear here as phases land._",
         "",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")

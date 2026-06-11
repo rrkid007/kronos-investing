@@ -10,6 +10,12 @@ require_human_approval: true  # manual approval queue (locked decision 2026-06-1
 paper_account:
   starting_cash: 100000.0
 
+sizing:
+  base_position_pct: 10.0     # base position as % of equity
+  min_position_value: 1000.0  # buys smaller than this are rejected
+  target_vol: 0.25            # annualized vol target; size scales inversely
+  max_positions: 8
+
 fill_model:
   # Decisions made after close on day T fill at day T+1 open.
   slippage_bps: 5.0

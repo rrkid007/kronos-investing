@@ -7,7 +7,7 @@ approved Orders. These shapes are the seams between phases.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -76,12 +76,19 @@ class AgentResult(BaseModel):
         )
 
 
+class Position(BaseModel):
+    ticker: str
+    qty: float = Field(gt=0.0)
+    avg_cost: float = Field(gt=0.0)
+    opened_at: date
+
+
 class TradeDecision(BaseModel):
     run_id: str
     ticker: str
     action: Action
     final_score: float = Field(ge=0.0, le=100.0)
-    signal_breakdown: dict[str, float] = Field(default_factory=dict)
+    signal_breakdown: dict = Field(default_factory=dict)
     sizing_hint: float | None = None  # target position value in account currency
     reason: str = ""
 
