@@ -1,0 +1,17 @@
+[Unit]
+Description=Trading platform daily analysis run
+# Ollama must be up for the News/SEC agents (they degrade to neutral if not,
+# but there's no reason to run degraded on purpose).
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=trading
+WorkingDirectory=/opt/trading
+# FINNHUB_API_KEY and any overrides live here, never in the repo:
+EnvironmentFile=-/etc/trading-platform.env
+ExecStart=/usr/local/bin/uv run python scripts/run_daily_analysis.py
+# Kronos + LLM analysis for the watchlist; generous ceiling.
+TimeoutStartSec=5400
+Nice=5

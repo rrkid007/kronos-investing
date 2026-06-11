@@ -123,4 +123,15 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   `scripts/approve_trades.py` lists/approves/rejects the queue; the daily
   report shows the account and pending orders.
 
-See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 9 (orchestrator hardening, scheduler + notifications, DGX deploy).
+- **Phase 9 (orchestrator + deployment)** — complete: market-data downloads
+  fan out across a thread pool (workers get their own SQLite connections;
+  all writes stay on the main thread), fundamentals analysis runs parallel
+  across tickers, GPU/LLM stages stay serial by design (one model, one
+  Ollama). ntfy-compatible notifications fire on every run — success summary
+  (decisions, equity, pending approvals) or failure with the error — and the
+  report gained a Run Health section (duration, stage failures, data
+  freshness). `deploy/` has the DGX kit: systemd service + timer (17:30 ET
+  weekdays, `Persistent=true` catch-up), model prefetch script, and
+  [SETUP.md](deploy/SETUP.md).
+
+See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 10 (reporting + performance analytics).

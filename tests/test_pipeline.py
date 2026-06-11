@@ -424,6 +424,50 @@ def test_full_cycle_through_pipeline(tmp_config, fake_market_data):
     conn.close()
 
 
+def test_report_includes_run_health(tmp_config, fake_market_data):
+    run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
+    report_text = (tmp_config.reports_dir / "daily" / "2026-06-11.md").read_text(encoding="utf-8")
+    assert "## Run Health" in report_text
+    assert "Stage failures" in report_text
+
+
+def test_success_notification_sent(tmp_config, fake_market_data, monkeypatch):
+    sent = {}
+
+    def fake_notify(settings, title, message):
+        sent.update(title=title, message=message)
+        return True
+
+    import trading_platform.pipeline as pipeline
+    monkeypatch.setattr(pipeline, "notify", fake_notify)
+    run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
+
+    assert "OK" in sent["title"]
+    assert "equity" in sent["message"]
+    assert "decisions" in sent["message"]
+
+
+def test_failure_notification_sent_on_crash(tmp_config, fake_market_data, monkeypatch):
+    sent = {}
+
+    import trading_platform.pipeline as pipeline
+
+    def fake_notify(settings, title, message):
+        sent.update(title=title, message=message)
+        return True
+
+    def boom(*a, **k):
+        raise RuntimeError("synthetic snapshot crash")
+
+    monkeypatch.setattr(pipeline, "notify", fake_notify)
+    monkeypatch.setattr(pipeline, "snapshot_account", boom)
+    with pytest.raises(RuntimeError, match="synthetic snapshot crash"):
+        run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
+
+    assert "FAILED" in sent["title"]
+    assert "resumable" in sent["message"]
+
+
 def test_unapproved_order_expires_at_next_run(tmp_config, fake_market_data):
     from trading_platform.execution.orders import submit_order
 

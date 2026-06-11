@@ -1,0 +1,15 @@
+[Unit]
+Description=Run trading platform daily analysis after US market close
+
+[Timer]
+# 17:30 New York time, weekdays. The timezone suffix requires systemd >= 235
+# (DGX OS qualifies). Market close is 16:00 ET; 17:30 leaves time for data
+# providers to finalize the daily bar.
+OnCalendar=Mon..Fri 17:30 America/New_York
+# Catch-up: if the box was off at trigger time, run on next boot. Combined
+# with resumable runs and order expiry, a missed day degrades safely.
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

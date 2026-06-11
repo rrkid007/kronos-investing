@@ -19,6 +19,8 @@ Stages without a registered agent are no-ops until their phase lands.
 from __future__ import annotations
 
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
@@ -35,6 +37,7 @@ from trading_platform.core.config import AppConfig
 from trading_platform.core.db import connect, init_db
 from trading_platform.core.llm import OllamaClient
 from trading_platform.core.models import Action, AgentResult, TradeDecision
+from trading_platform.core.notify import notify
 from trading_platform.core.runs import (
     complete_run,
     create_run,
@@ -99,8 +102,10 @@ def run_daily(
     """
     run_date = run_date or date.today().isoformat()
     as_of = date.fromisoformat(run_date)
+    started = time.perf_counter()
     conn = connect(config.db_path)
     init_db(conn)
+    injected_market_data = market_data is not None  # tests inject fakes
     if market_data is None:
         market_data = MarketDataService(conn)
 
@@ -130,20 +135,14 @@ def run_daily(
         symbols = list(config.watchlist.symbols)
         symbols += [t for t in held_by_ticker if t not in symbols]
 
-        # --- pass 1: data + research agents
-        for symbol in symbols:
-            df = _ensure_market_data(conn, market_data, run_id, symbol, as_of,
-                                     skipped, frames)
-            if df is not None:
-                frames[symbol] = df
-            for stage in AGENT_STAGES:
-                if stage_status(conn, run_id, stage, symbol) == "completed":
-                    continue
-                if df is None:
-                    mark_stage(conn, run_id, stage, "skipped", ticker=symbol,
-                               detail=skipped.get(symbol, "market data unavailable"))
-                    continue
-                _run_agent_stage(conn, registry, run_id, stage, symbol, df)
+        # --- pass 1a: market data — downloads fan out in parallel (A1);
+        # all SQLite writes stay on this thread.
+        _refresh_market_data(conn, config, market_data, injected_market_data,
+                             run_id, symbols, as_of, skipped, frames)
+
+        # --- pass 1b: research agents. Network-bound stages fan out across
+        # tickers; GPU/LLM stages run serial (single model, single Ollama).
+        _run_research_stages(conn, registry, run_id, symbols, frames, skipped)
 
         # --- pass 2: decisions (pure recompute from stored scores)
         engine = DecisionEngine(config.weights)
@@ -190,15 +189,48 @@ def run_daily(
         mark_stage(conn, run_id, SNAPSHOT_STAGE, "completed",
                    detail=f"equity {summary['equity']:,.0f}")
 
-        _write_report(conn, config, run_id, run_date, skipped)
+        duration = time.perf_counter() - started
+        _write_report(conn, config, run_id, run_date, skipped, duration)
         complete_run(conn, run_id)
         logger.info("run %s completed (%d tickers skipped)", run_id, len(skipped))
-    except Exception:
+        notify(
+            config.settings.notifications,
+            f"Trading run {run_date}: OK",
+            _run_summary(conn, run_id, run_date, summary, decisions, skipped, duration),
+        )
+    except Exception as exc:
         complete_run(conn, run_id, status="partial", notes="crashed mid-run; resumable")
+        notify(
+            config.settings.notifications,
+            f"Trading run {run_date}: FAILED",
+            f"run {run_id} crashed (resumable on next invocation):\n{exc}",
+        )
         raise
     finally:
         conn.close()
     return run_id
+
+
+def _run_summary(conn, run_id, run_date, account_summary, decisions, skipped,
+                 duration) -> str:
+    actions: dict[str, int] = {}
+    for d in decisions.values():
+        actions[d.action.value] = actions.get(d.action.value, 0) + 1
+    n_pending = conn.execute(
+        "SELECT COUNT(*) FROM orders WHERE status = 'awaiting_approval'"
+    ).fetchone()[0]
+    lines = [
+        f"run {run_id} in {duration:.0f}s",
+        "decisions: " + (", ".join(f"{k}={v}" for k, v in sorted(actions.items())) or "none"),
+        f"equity ${account_summary['equity']:,.2f} "
+        f"(cash ${account_summary['cash']:,.2f}, "
+        f"{account_summary['n_positions']} positions)",
+    ]
+    if n_pending:
+        lines.append(f"** {n_pending} order(s) awaiting approval — run approve_trades.py **")
+    if skipped:
+        lines.append(f"skipped tickers: {', '.join(sorted(skipped))}")
+    return "\n".join(lines)
 
 
 def _load_signals(conn, run_id: str, symbol: str) -> dict[str, tuple[float, float]]:
@@ -391,37 +423,124 @@ def _run_agent_stage(
                detail=f"score {result.score:.1f} ({result.direction.value})")
 
 
-def _ensure_market_data(
-    conn,
-    market_data: MarketDataService,
-    run_id: str,
-    symbol: str,
-    as_of: date,
-    skipped: dict[str, str],
-    frames: dict[str, pd.DataFrame],
-) -> pd.DataFrame | None:
-    """Refresh + validate one ticker. Returns its frame, or None if unscoreable."""
-    if symbol in frames:  # already refreshed during fill processing this run
-        mark_stage(conn, run_id, DATA_STAGE, "completed", ticker=symbol,
-                   detail="refreshed during fill processing")
-        return frames[symbol]
-    if stage_status(conn, run_id, DATA_STAGE, symbol) == "completed":
-        return market_data.load(symbol)  # resumed run; gate already passed
+MAX_DATA_WORKERS = 8
+PARALLEL_AGENT_STAGES = {"fundamentals"}  # network-bound, stateless, no conn use
 
-    mark_stage(conn, run_id, DATA_STAGE, "running", ticker=symbol)
-    data = market_data.refresh_and_validate(symbol, as_of=as_of)
-    if data.ok:
-        mark_stage(conn, run_id, DATA_STAGE, "completed", ticker=symbol, detail=data.detail())
-        return data.df
 
-    logger.warning("data gate failed for %s: %s", symbol, data.detail())
-    mark_stage(conn, run_id, DATA_STAGE, "failed", ticker=symbol, detail=data.detail())
-    skipped[symbol] = data.detail()
-    return None
+def _refresh_market_data(
+    conn, config, market_data, injected: bool, run_id: str,
+    symbols: list[str], as_of: date,
+    skipped: dict[str, str], frames: dict[str, pd.DataFrame],
+) -> None:
+    """Refresh + gate all tickers, downloads in parallel (A1).
+
+    Workers each open their own SQLite connection (WAL serializes writes);
+    with an injected fake service (tests) workers share it directly. All
+    stage marking happens on the calling thread.
+    """
+    pending: list[str] = []
+    for symbol in symbols:
+        if symbol in frames:  # already refreshed during fill processing
+            mark_stage(conn, run_id, DATA_STAGE, "completed", ticker=symbol,
+                       detail="refreshed during fill processing")
+        elif stage_status(conn, run_id, DATA_STAGE, symbol) == "completed":
+            frames[symbol] = market_data.load(symbol)  # resumed run
+        else:
+            mark_stage(conn, run_id, DATA_STAGE, "running", ticker=symbol)
+            pending.append(symbol)
+    if not pending:
+        return
+
+    def refresh(symbol: str):
+        if injected:
+            return market_data.refresh_and_validate(symbol, as_of=as_of)
+        worker_conn = connect(config.db_path)
+        try:
+            return MarketDataService(worker_conn).refresh_and_validate(symbol, as_of=as_of)
+        finally:
+            worker_conn.close()
+
+    with ThreadPoolExecutor(max_workers=min(MAX_DATA_WORKERS, len(pending))) as pool:
+        futures = {symbol: pool.submit(refresh, symbol) for symbol in pending}
+
+    for symbol in pending:
+        try:
+            data = futures[symbol].result()
+        except Exception as exc:  # worker crash == fetch failure, not run failure
+            logger.exception("market data worker crashed for %s", symbol)
+            mark_stage(conn, run_id, DATA_STAGE, "failed", ticker=symbol, detail=str(exc))
+            skipped[symbol] = f"refresh crashed: {exc}"
+            continue
+        if data.ok:
+            mark_stage(conn, run_id, DATA_STAGE, "completed", ticker=symbol,
+                       detail=data.detail())
+            frames[symbol] = data.df
+        else:
+            logger.warning("data gate failed for %s: %s", symbol, data.detail())
+            mark_stage(conn, run_id, DATA_STAGE, "failed", ticker=symbol,
+                       detail=data.detail())
+            skipped[symbol] = data.detail()
+
+
+def _run_research_stages(
+    conn, registry: dict, run_id: str, symbols: list[str],
+    frames: dict[str, pd.DataFrame], skipped: dict[str, str],
+) -> None:
+    """Run each agent stage across tickers; parallel where safe.
+
+    GPU (kronos) and LLM (news, sec_filing) stages stay serial — one model,
+    one Ollama, and they write to the shared connection. All persistence
+    happens on the calling thread either way.
+    """
+    for stage in AGENT_STAGES:
+        todo = [s for s in symbols
+                if stage_status(conn, run_id, stage, s) != "completed"]
+        ready = []
+        for symbol in todo:
+            if symbol not in frames:
+                mark_stage(conn, run_id, stage, "skipped", ticker=symbol,
+                           detail=skipped.get(symbol, "market data unavailable"))
+            else:
+                ready.append(symbol)
+
+        agent = registry.get(stage)
+        if agent is None:
+            for symbol in ready:
+                mark_stage(conn, run_id, stage, "completed", ticker=symbol,
+                           detail="no-op (agent pending)")
+            continue
+
+        if stage in PARALLEL_AGENT_STAGES and len(ready) > 1:
+            for symbol in ready:
+                mark_stage(conn, run_id, stage, "running", ticker=symbol)
+            with ThreadPoolExecutor(max_workers=min(MAX_DATA_WORKERS, len(ready))) as pool:
+                futures = {s: pool.submit(agent.analyze, s, run_id, frames[s])
+                           for s in ready}
+            for symbol in ready:
+                _persist_agent_outcome(conn, run_id, stage, symbol, futures[symbol])
+        else:
+            for symbol in ready:
+                _run_agent_stage(conn, registry, run_id, stage, symbol, frames[symbol])
+
+
+def _persist_agent_outcome(conn, run_id, stage, symbol, future) -> None:
+    """Main-thread persistence for a parallel agent call, crash-isolated."""
+    try:
+        result = future.result()
+    except Exception as exc:
+        logger.exception("agent %s crashed on %s", stage, symbol)
+        save_agent_result(conn, AgentResult.neutral(stage, symbol, run_id,
+                                                    f"agent error: {exc}"))
+        mark_stage(conn, run_id, stage, "failed", ticker=symbol, detail=str(exc))
+        return
+    save_agent_result(conn, result)
+    mark_stage(conn, run_id, stage, "completed", ticker=symbol,
+               detail=f"score {result.score:.1f} ({result.direction.value})")
 
 
 def _write_report(
-    conn, config: AppConfig, run_id: str, run_date: str, skipped: dict[str, str]
+    conn, config: AppConfig, run_id: str, run_date: str,
+    skipped: dict[str, str], duration: float = 0.0,
 ) -> Path:
     report_dir = config.reports_dir / "daily"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -533,9 +652,27 @@ def _write_report(
         lines += [f"- **{t}** — skipped: {reason}" for t, reason in sorted(skipped.items())]
         lines += [""]
 
-    lines += [
-        "_Risk results and account summary will appear here as phases land._",
-        "",
-    ]
+    # Run health: silent failures are the enemy (A5).
+    failures = conn.execute(
+        "SELECT stage, ticker, detail FROM run_stages "
+        "WHERE run_id = ? AND status = 'failed' ORDER BY stage, ticker",
+        (run_id,),
+    ).fetchall()
+    freshness = conn.execute(
+        "SELECT MIN(last) AS oldest, MAX(last) AS newest FROM "
+        "(SELECT MAX(date) AS last FROM price_cache GROUP BY ticker)"
+    ).fetchone()
+    lines += ["## Run Health", ""]
+    lines += [f"- Duration: {duration:.0f}s" if duration else "- Duration: n/a"]
+    if failures:
+        lines += [f"- Stage failures: {len(failures)}"]
+        lines += [f"  - {f['stage']}/{f['ticker']}: {(f['detail'] or '')[:80]}"
+                  for f in failures]
+    else:
+        lines += ["- Stage failures: none"]
+    if freshness and freshness["oldest"]:
+        lines += [f"- Price data freshness: oldest last bar {freshness['oldest']}, "
+                  f"newest {freshness['newest']}"]
+    lines += [""]
     path.write_text("\n".join(lines), encoding="utf-8")
     return path
