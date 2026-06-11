@@ -48,6 +48,15 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
 
 ## Status
 
-Phase 0 (foundations) complete: config system, SQLite schema (WAL, versioned
-migrations), agent data contracts, resumable run lifecycle, pipeline skeleton,
-test suite. See [PLAN.md](PLAN.md) §3 for the phase roadmap.
+- **Phase 0 (foundations)** — complete: config system, SQLite schema (WAL,
+  versioned migrations), agent data contracts, resumable run lifecycle,
+  pipeline skeleton, test suite.
+- **Phase 1 (market data + quality gate)** — complete: yfinance ingestion into
+  the `price_cache` (full-window upsert so retroactive split/dividend
+  adjustments are always correct), 8-check data-quality gate (history depth,
+  NaN, price sanity, high/low consistency, date gaps, staleness, split
+  artifacts, zero volume). Tickers failing the gate are skipped and flagged in
+  the daily report — agents never score bad data.
+  `scripts/refresh_market_data.py` refreshes the watchlist manually.
+
+See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 2 (Technical Agent).
