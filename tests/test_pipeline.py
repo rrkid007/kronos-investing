@@ -77,6 +77,55 @@ def test_data_gate_failure_skips_agents_not_run(tmp_config):
     assert "BRK-B" in report_text
 
 
+def test_technical_agent_scores_persisted(tmp_config, fake_market_data):
+    run_id = run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
+
+    conn = connect(tmp_config.db_path)
+    rows = conn.execute(
+        "SELECT * FROM agent_scores WHERE run_id = ? AND agent = 'technical'", (run_id,)
+    ).fetchall()
+    conn.close()
+
+    assert len(rows) == len(tmp_config.watchlist.symbols)
+    for r in rows:
+        assert 0.0 <= r["score"] <= 100.0
+        assert r["direction"] in ("bullish", "bearish", "neutral")
+
+    # Scores surface in the daily report
+    report_text = (tmp_config.reports_dir / "daily" / "2026-06-11.md").read_text(encoding="utf-8")
+    assert "Agent Scores" in report_text
+    assert "technical" in report_text
+
+
+def test_agent_crash_is_isolated(tmp_config, fake_market_data, monkeypatch):
+    """A crashing agent yields a neutral score and a failed stage — run continues."""
+    import trading_platform.pipeline as pipeline
+
+    def boom(self, ticker, run_id, df):
+        raise ValueError("synthetic agent failure")
+
+    monkeypatch.setattr(type(pipeline.AGENT_REGISTRY["technical"]), "analyze", boom)
+    run_id = run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
+
+    conn = connect(tmp_config.db_path)
+    run = conn.execute("SELECT status FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+    assert run["status"] == "completed"  # the run survived
+
+    rows = conn.execute(
+        "SELECT * FROM agent_scores WHERE run_id = ? AND agent = 'technical'", (run_id,)
+    ).fetchall()
+    assert len(rows) == len(tmp_config.watchlist.symbols)
+    for r in rows:
+        assert r["score"] == 50.0
+        assert r["confidence"] == 0.0  # ignorable by the decision layer
+
+    stages = conn.execute(
+        "SELECT status FROM run_stages WHERE run_id = ? AND stage = 'technical'", (run_id,)
+    ).fetchall()
+    assert {s["status"] for s in stages} == {"failed"}
+    conn.close()
+
+
 def test_rerunning_same_date_does_not_duplicate(tmp_config, fake_market_data):
     run_id_1 = run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
     run_id_2 = run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)

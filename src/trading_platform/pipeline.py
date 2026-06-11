@@ -1,10 +1,11 @@
 """Daily pipeline orchestrator.
 
-Phase 1: market data refresh + quality gate run per ticker ahead of the
-research stages. A ticker that fails the gate has all its agent stages
-skipped and is flagged in the report — agents never score bad data.
-Research agents themselves are still no-ops; they plug in via AGENT_STAGES
-in later phases.
+Phase 2: the Technical Agent is live; remaining research stages are no-ops
+until their phases land. Flow per ticker: market data refresh + quality gate,
+then each registered agent scores the ticker and persists an AgentResult.
+An agent that crashes is isolated — the stage is marked failed, a neutral
+zero-confidence score is stored so the decision layer can ignore it, and the
+run continues.
 """
 
 from __future__ import annotations
@@ -13,21 +14,30 @@ import logging
 from datetime import date
 from pathlib import Path
 
+import pandas as pd
+
+from trading_platform.agents.technical import TechnicalAgent
 from trading_platform.core.config import AppConfig
 from trading_platform.core.db import connect, init_db
+from trading_platform.core.models import AgentResult
 from trading_platform.core.runs import (
     complete_run,
     create_run,
     find_resumable_run,
     mark_stage,
+    save_agent_result,
     stage_status,
 )
 from trading_platform.data.market_data import MarketDataService
 
 logger = logging.getLogger(__name__)
 
-# Agent names, in fan-out order. Each maps to a callable in later phases.
+# Research stages in fan-out order. Stages without a registered agent are
+# no-ops until their phase lands.
 AGENT_STAGES = ["technical", "kronos", "fundamentals", "news", "sec_filing"]
+AGENT_REGISTRY = {
+    "technical": TechnicalAgent(),
+}
 DATA_STAGE = "market_data"
 
 
@@ -57,23 +67,19 @@ def run_daily(
     skipped: dict[str, str] = {}  # ticker -> reason, for the report
     try:
         for symbol in config.watchlist.symbols:
-            data_ok = _ensure_market_data(
+            df = _ensure_market_data(
                 conn, market_data, run_id, symbol, date.fromisoformat(run_date), skipped
             )
             for stage in AGENT_STAGES:
                 if stage_status(conn, run_id, stage, symbol) == "completed":
                     continue
-                if not data_ok:
+                if df is None:
                     mark_stage(conn, run_id, stage, "skipped", ticker=symbol,
                                detail=skipped.get(symbol, "market data unavailable"))
                     continue
-                mark_stage(conn, run_id, stage, "running", ticker=symbol)
-                # Phase 1: no-op. Later phases dispatch to the real agent here
-                # and persist its AgentResult via save_agent_result().
-                mark_stage(conn, run_id, stage, "completed", ticker=symbol,
-                           detail="no-op (phase 1)")
+                _run_agent_stage(conn, run_id, stage, symbol, df)
 
-        _write_report_stub(config, run_id, run_date, skipped)
+        _write_report(conn, config, run_id, run_date, skipped)
         complete_run(conn, run_id)
         logger.info("run %s completed (%d tickers skipped)", run_id, len(skipped))
     except Exception:
@@ -84,6 +90,29 @@ def run_daily(
     return run_id
 
 
+def _run_agent_stage(conn, run_id: str, stage: str, symbol: str, df: pd.DataFrame) -> None:
+    agent = AGENT_REGISTRY.get(stage)
+    if agent is None:
+        mark_stage(conn, run_id, stage, "completed", ticker=symbol,
+                   detail="no-op (agent pending)")
+        return
+
+    mark_stage(conn, run_id, stage, "running", ticker=symbol)
+    try:
+        result = agent.analyze(symbol, run_id, df)
+    except Exception as exc:
+        # Isolate agent crashes: store an ignorable neutral score, keep going.
+        logger.exception("agent %s crashed on %s", stage, symbol)
+        save_agent_result(conn, AgentResult.neutral(stage, symbol, run_id,
+                                                    f"agent error: {exc}"))
+        mark_stage(conn, run_id, stage, "failed", ticker=symbol, detail=str(exc))
+        return
+
+    save_agent_result(conn, result)
+    mark_stage(conn, run_id, stage, "completed", ticker=symbol,
+               detail=f"score {result.score:.1f} ({result.direction.value})")
+
+
 def _ensure_market_data(
     conn,
     market_data: MarketDataService,
@@ -91,25 +120,25 @@ def _ensure_market_data(
     symbol: str,
     as_of: date,
     skipped: dict[str, str],
-) -> bool:
-    """Refresh + validate one ticker's data. Returns True if agents may score it."""
+) -> pd.DataFrame | None:
+    """Refresh + validate one ticker. Returns its frame, or None if unscoreable."""
     if stage_status(conn, run_id, DATA_STAGE, symbol) == "completed":
-        return True  # resumed run; gate already passed for this ticker
+        return market_data.load(symbol)  # resumed run; gate already passed
 
     mark_stage(conn, run_id, DATA_STAGE, "running", ticker=symbol)
     data = market_data.refresh_and_validate(symbol, as_of=as_of)
     if data.ok:
         mark_stage(conn, run_id, DATA_STAGE, "completed", ticker=symbol, detail=data.detail())
-        return True
+        return data.df
 
     logger.warning("data gate failed for %s: %s", symbol, data.detail())
     mark_stage(conn, run_id, DATA_STAGE, "failed", ticker=symbol, detail=data.detail())
     skipped[symbol] = data.detail()
-    return False
+    return None
 
 
-def _write_report_stub(
-    config: AppConfig, run_id: str, run_date: str, skipped: dict[str, str]
+def _write_report(
+    conn, config: AppConfig, run_id: str, run_date: str, skipped: dict[str, str]
 ) -> Path:
     report_dir = config.reports_dir / "daily"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -123,12 +152,33 @@ def _write_report_stub(
         f"Watchlist: {tickers}",
         "",
     ]
+
+    rows = conn.execute(
+        "SELECT ticker, agent, score, confidence, direction FROM agent_scores "
+        "WHERE run_id = ? ORDER BY score DESC, ticker",
+        (run_id,),
+    ).fetchall()
+    if rows:
+        lines += [
+            "## Agent Scores",
+            "",
+            "| Ticker | Agent | Score | Confidence | Direction |",
+            "|--------|-------|------:|-----------:|-----------|",
+        ]
+        lines += [
+            f"| {r['ticker']} | {r['agent']} | {r['score']:.1f} "
+            f"| {r['confidence']:.2f} | {r['direction']} |"
+            for r in rows
+        ]
+        lines += [""]
+
     if skipped:
         lines += ["## Data Quality Flags", ""]
         lines += [f"- **{t}** — skipped: {reason}" for t, reason in sorted(skipped.items())]
         lines += [""]
+
     lines += [
-        "_Pipeline (phase 1): agent scores, decisions, and account summary "
+        "_Pipeline (phase 2): decisions, risk results, and account summary "
         "will appear here as phases land._",
         "",
     ]

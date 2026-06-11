@@ -59,4 +59,10 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   the daily report — agents never score bad data.
   `scripts/refresh_market_data.py` refreshes the watchlist manually.
 
-See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 2 (Technical Agent).
+- **Phase 2 (Technical Agent)** — complete: deterministic pandas analysis on
+  adjusted close with a documented 4-component rubric (trend structure 30,
+  momentum 30, trend quality 20, risk 20). Golden-file tests pin exact scores;
+  agent crashes are isolated to a neutral zero-confidence score so the run
+  survives. The daily report now includes a live score leaderboard.
+
+See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 3 (Fundamentals Agent).
