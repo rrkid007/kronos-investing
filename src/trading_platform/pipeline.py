@@ -46,6 +46,17 @@ from trading_platform.core.runs import (
 )
 from trading_platform.data.market_data import MarketDataService
 from trading_platform.execution.account import load_cash, load_positions
+from trading_platform.execution.orders import (
+    expire_stale_orders,
+    fillable_orders,
+    submit_order,
+)
+from trading_platform.execution.paper_broker import (
+    FillError,
+    ensure_account,
+    fill_order,
+    snapshot_account,
+)
 from trading_platform.risk.engine import RiskEngine, log_risk_event
 
 logger = logging.getLogger(__name__)
@@ -57,6 +68,9 @@ DATA_STAGE = "market_data"
 DECISION_STAGE = "decision"
 PORTFOLIO_STAGE = "portfolio"
 RISK_STAGE = "risk"
+EXECUTION_STAGE = "execution"
+ORDERS_STAGE = "orders"
+SNAPSHOT_STAGE = "snapshot"
 
 
 def build_agent_registry(config: AppConfig, conn=None) -> dict:
@@ -98,18 +112,28 @@ def run_daily(
         logger.info("created run %s for %s", run_id, run_date)
 
     registry = build_agent_registry(config, conn=conn)
-    positions = load_positions(conn)
-    held_by_ticker = {p.ticker: p for p in positions}
-    # Held tickers are always re-evaluated, even off-watchlist (exit policy).
-    symbols = list(config.watchlist.symbols)
-    symbols += [t for t in held_by_ticker if t not in symbols]
-
     skipped: dict[str, str] = {}  # ticker -> reason, for the report
     frames: dict[str, pd.DataFrame] = {}
     try:
+        # --- pass 0: execution — expire stale orders, fill approved ones at
+        # today's open, BEFORE analysis (fills change positions and cash).
+        mark_stage(conn, run_id, EXECUTION_STAGE, "running")
+        ensure_account(conn, config.risk.paper_account.starting_cash)
+        n_expired = expire_stale_orders(conn, run_date)
+        n_filled = _process_fills(conn, config, market_data, run_date, as_of, frames)
+        mark_stage(conn, run_id, EXECUTION_STAGE, "completed",
+                   detail=f"{n_filled} filled, {n_expired} expired")
+
+        positions = load_positions(conn)  # post-fill view
+        held_by_ticker = {p.ticker: p for p in positions}
+        # Held tickers are always re-evaluated, even off-watchlist (exit policy).
+        symbols = list(config.watchlist.symbols)
+        symbols += [t for t in held_by_ticker if t not in symbols]
+
         # --- pass 1: data + research agents
         for symbol in symbols:
-            df = _ensure_market_data(conn, market_data, run_id, symbol, as_of, skipped)
+            df = _ensure_market_data(conn, market_data, run_id, symbol, as_of,
+                                     skipped, frames)
             if df is not None:
                 frames[symbol] = df
             for stage in AGENT_STAGES:
@@ -152,6 +176,19 @@ def run_daily(
                                positions, held_by_ticker)
         mark_stage(conn, run_id, RISK_STAGE, "completed",
                    detail=f"{n_cleared} trade(s) cleared risk")
+
+        # --- pass 5: risk-cleared trades become orders (approval queue)
+        mark_stage(conn, run_id, ORDERS_STAGE, "running")
+        n_orders = _submit_orders(conn, config, run_id, run_date, decisions, frames)
+        mark_stage(conn, run_id, ORDERS_STAGE, "completed",
+                   detail=f"{n_orders} order(s) submitted")
+
+        # --- pass 6: mark-to-market snapshot
+        mark_stage(conn, run_id, SNAPSHOT_STAGE, "running")
+        closes = {t: float(df["close"].iloc[-1]) for t, df in frames.items()}
+        summary = snapshot_account(conn, run_date, closes)
+        mark_stage(conn, run_id, SNAPSHOT_STAGE, "completed",
+                   detail=f"equity {summary['equity']:,.0f}")
 
         _write_report(conn, config, run_id, run_date, skipped)
         complete_run(conn, run_id)
@@ -213,6 +250,72 @@ def _assess_buys(conn, config, decisions, frames, positions) -> int:
             approved += 1
         save_decision(conn, decision)
     return approved
+
+
+def _process_fills(conn, config, market_data, run_date, as_of, frames) -> int:
+    """Fill approved orders from earlier runs at today's open.
+
+    An order whose ticker has no completed bar for today (halt, data issue)
+    stays approved and is retried next run. A fill the broker refuses
+    (e.g. selling an absent position) is cancelled with the reason noted.
+    """
+    filled = 0
+    for order in fillable_orders(conn, run_date):
+        ticker = order["ticker"]
+        df = frames.get(ticker)
+        if df is None:
+            data = market_data.refresh_and_validate(ticker, as_of=as_of)
+            df = data.df
+            if data.ok:  # only gate-passed frames may reach the agents
+                frames[ticker] = df
+        bar = df.loc[df.index.date == as_of] if df is not None and not df.empty else None
+        if bar is None or bar.empty:
+            logger.warning("no bar for %s on %s; order %s stays pending fill",
+                           ticker, run_date, order["order_id"])
+            continue
+        try:
+            result = fill_order(conn, order, as_of, float(bar["open"].iloc[0]),
+                                config.risk.fill_model)
+            logger.info("filled %s %s x%s @ %.2f", result["side"], ticker,
+                        result["qty"], result["exec_price"])
+            filled += 1
+        except FillError as exc:
+            logger.error("fill refused for %s: %s", order["order_id"], exc)
+            conn.execute(
+                "UPDATE orders SET status = 'cancelled', notes = ? WHERE order_id = ?",
+                (f"fill refused: {exc}", order["order_id"]),
+            )
+            conn.commit()
+    return filled
+
+
+def _submit_orders(conn, config, run_id, run_date, decisions, frames) -> int:
+    """Risk-cleared decisions become orders in the approval queue."""
+    auto = not config.risk.require_human_approval
+    submitted = 0
+    for decision in decisions.values():
+        risk = decision.signal_breakdown.get("risk")
+        if not risk or not risk.get("approved"):
+            continue
+        if decision.action == Action.SELL:
+            qty = decision.sizing_hint
+        elif decision.action == Action.BUY:
+            qty = decision.signal_breakdown["portfolio"]["qty"]
+        else:
+            continue
+        price = _last_close(frames, decision.ticker)
+        submit_order(
+            conn, run_id, decision.ticker, decision.action.value, qty, run_date,
+            auto_approve=auto,
+            context={
+                "final_score": decision.final_score,
+                "reason": decision.reason,
+                "est_price": price,
+                "est_value": round(qty * price, 2) if price else None,
+            },
+        )
+        submitted += 1
+    return submitted
 
 
 def _risk_pass(conn, config, run_id, decisions, frames, positions, held_by_ticker) -> int:
@@ -295,8 +398,13 @@ def _ensure_market_data(
     symbol: str,
     as_of: date,
     skipped: dict[str, str],
+    frames: dict[str, pd.DataFrame],
 ) -> pd.DataFrame | None:
     """Refresh + validate one ticker. Returns its frame, or None if unscoreable."""
+    if symbol in frames:  # already refreshed during fill processing this run
+        mark_stage(conn, run_id, DATA_STAGE, "completed", ticker=symbol,
+                   detail="refreshed during fill processing")
+        return frames[symbol]
     if stage_status(conn, run_id, DATA_STAGE, symbol) == "completed":
         return market_data.load(symbol)  # resumed run; gate already passed
 
@@ -329,6 +437,47 @@ def _write_report(
     ]
 
     import json as _json
+
+    snap = conn.execute(
+        "SELECT * FROM account_snapshots WHERE snapshot_date = ?", (run_date,)
+    ).fetchone()
+    if snap:
+        positions = conn.execute(
+            "SELECT ticker, qty, avg_cost FROM positions ORDER BY ticker"
+        ).fetchall()
+        lines += [
+            "## Account",
+            "",
+            f"- Equity: **${snap['equity']:,.2f}**  |  Cash: ${snap['cash']:,.2f}",
+            f"- Realized P&L: ${snap['realized_pnl']:,.2f}  |  "
+            f"Unrealized P&L: ${snap['unrealized_pnl']:,.2f}",
+            f"- Open positions: {len(positions)}"
+            + (" — " + ", ".join(f"{p['ticker']} x{p['qty']:g} @ {p['avg_cost']:.2f}"
+                                 for p in positions) if positions else ""),
+            "",
+        ]
+
+    pending = conn.execute(
+        "SELECT o.order_id, o.ticker, o.side, o.qty, o.notes FROM orders o "
+        "WHERE o.status = 'awaiting_approval' ORDER BY o.ticker"
+    ).fetchall()
+    if pending:
+        lines += [
+            "## Pending Orders — approval required",
+            "",
+            "Run `python scripts/approve_trades.py` to review.",
+            "",
+            "| Order ID | Ticker | Side | Qty | Est. Value |",
+            "|----------|--------|------|----:|-----------:|",
+        ]
+        for o in pending:
+            notes = _json.loads(o["notes"] or "{}")
+            value = notes.get("est_value")
+            lines.append(
+                f"| `{o['order_id']}` | {o['ticker']} | {o['side']} | {o['qty']:g} "
+                f"| {'$' + format(value, ',.0f') if value else '—'} |"
+            )
+        lines += [""]
 
     decisions = conn.execute(
         "SELECT ticker, action, final_score, sizing_hint, reason, signal_breakdown "

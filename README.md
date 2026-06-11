@@ -113,4 +113,14 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   are exempt from exposure rules by design — blocking a stop-loss is itself
   a risk. 30 dedicated tests covering pass/fail/boundary per rule.
 
-See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 8 (Paper Trading Engine + approval queue).
+- **Phase 8 (Paper Trading + approval queue)** — complete: full order
+  lifecycle (awaiting_approval → approved/rejected/expired → filled) with
+  UNIQUE(run_id, ticker, side) idempotency; T+1-open fills with slippage and
+  commission; weighted-average cost positions; realized/unrealized P&L;
+  daily mark-to-market snapshots. Each run starts by expiring stale
+  unapproved orders and filling approved ones at today's open BEFORE
+  analysis, so decisions always see post-fill positions and cash.
+  `scripts/approve_trades.py` lists/approves/rejects the queue; the daily
+  report shows the account and pending orders.
+
+See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 9 (orchestrator hardening, scheduler + notifications, DGX deploy).
