@@ -1,0 +1,18 @@
+# Signal aggregation weights — must sum to 1.0 (validated at startup).
+# Keys must match agent names registered in the pipeline.
+signal_weights:
+  fundamentals: 0.35
+  technical: 0.25
+  kronos: 0.20
+  news: 0.10
+  sec_filing: 0.10
+
+thresholds:
+  buy_score: 70.0       # final score >= this -> buy candidate
+  watchlist_score: 60.0 # final score >= this -> watchlist
+  exit_score: 45.0      # held position scoring below this -> score-decay exit
+
+exit_policy:
+  stop_loss_pct: 8.0
+  take_profit_pct: 20.0
+  max_hold_days: 60

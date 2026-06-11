@@ -1,0 +1,16 @@
+# Deterministic risk limits enforced by the Risk Engine. No AI touches these.
+max_position_pct: 15.0      # max single-position size as % of account equity
+max_sector_pct: 40.0        # max combined exposure to one sector
+min_cash_reserve_pct: 10.0  # cash floor as % of equity
+min_final_score: 70.0       # decisions below this are never tradable
+restricted_assets: []       # tickers that may never be traded
+
+require_human_approval: true  # manual approval queue (locked decision 2026-06-11)
+
+paper_account:
+  starting_cash: 100000.0
+
+fill_model:
+  # Decisions made after close on day T fill at day T+1 open.
+  slippage_bps: 5.0
+  commission_per_trade: 0.0

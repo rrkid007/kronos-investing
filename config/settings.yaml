@@ -1,0 +1,28 @@
+# Platform-wide settings. Paths are relative to the repo root unless absolute.
+db_path: db/investment_research.sqlite
+reports_dir: reports
+timezone: America/New_York
+
+llm:
+  provider: ollama
+  base_url: http://localhost:11434
+  model: qwen2.5:32b-instruct
+  timeout_seconds: 120
+
+kronos:
+  model_id: NeoQuasar/Kronos-base
+  horizon_days: 10
+  context_candles: 400
+
+news:
+  # Finnhub key is read from this environment variable — never stored in config.
+  finnhub_api_key_env: FINNHUB_API_KEY
+  rss_feeds: []
+
+notifications:
+  enabled: false
+  webhook_url: ""
+
+schedule:
+  run_after_close_local: "17:30"
+  weekdays_only: true

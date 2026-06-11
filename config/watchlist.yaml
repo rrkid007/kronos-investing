@@ -1,0 +1,22 @@
+# Tickers under research. Sector tags drive the Risk Engine's sector-exposure limits.
+tickers:
+  - symbol: AAPL
+    sector: Technology
+  - symbol: MSFT
+    sector: Technology
+  - symbol: NVDA
+    sector: Technology
+  - symbol: AMZN
+    sector: Consumer Discretionary
+  - symbol: META
+    sector: Communication Services
+  - symbol: GOOGL
+    sector: Communication Services
+  - symbol: AVGO
+    sector: Technology
+  - symbol: COST
+    sector: Consumer Staples
+  - symbol: V
+    sector: Financials
+  - symbol: BRK-B
+    sector: Financials
