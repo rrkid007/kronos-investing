@@ -65,4 +65,11 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   agent crashes are isolated to a neutral zero-confidence score so the run
   survives. The daily report now includes a live score leaderboard.
 
-See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 3 (Fundamentals Agent).
+- **Phase 3 (Fundamentals Agent)** — complete: yfinance snapshot scored by an
+  explicit worst→best anchor rubric across the spec's five sub-scores (growth,
+  profitability, balance sheet, cash flow, valuation; 16 components total).
+  Missing fields degrade to neutral sub-scores and reduce confidence
+  (0.3 + 0.6 × coverage) — never guesses. Snapshots are current-only, never
+  fed to the backtester (PLAN.md S2).
+
+See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 4 (Kronos Forecast Agent).

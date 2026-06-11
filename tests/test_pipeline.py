@@ -1,6 +1,6 @@
 import pytest
 
-from tests.fixtures import FakeMarketDataService, make_ohlcv
+from tests.fixtures import FakeMarketDataService, make_ohlcv, make_snapshot
 from trading_platform.core.db import connect
 from trading_platform.pipeline import AGENT_STAGES, run_daily
 
@@ -8,6 +8,15 @@ from trading_platform.pipeline import AGENT_STAGES, run_daily
 @pytest.fixture
 def fake_market_data():
     return FakeMarketDataService(default_frame=make_ohlcv())
+
+
+@pytest.fixture(autouse=True)
+def canned_fundamentals(monkeypatch):
+    """Pipeline tests never hit the network for fundamentals."""
+    monkeypatch.setattr(
+        "trading_platform.agents.fundamentals.fetch_fundamentals",
+        lambda ticker: make_snapshot(ticker=ticker),
+    )
 
 
 def test_run_daily_writes_run_row_and_report(tmp_config, fake_market_data):
@@ -91,10 +100,25 @@ def test_technical_agent_scores_persisted(tmp_config, fake_market_data):
         assert 0.0 <= r["score"] <= 100.0
         assert r["direction"] in ("bullish", "bearish", "neutral")
 
+    # Fundamentals agent persists too (canned snapshot via autouse fixture)
+    n_fund = conn2_count(tmp_config, run_id)
+    assert n_fund == len(tmp_config.watchlist.symbols)
+
     # Scores surface in the daily report
     report_text = (tmp_config.reports_dir / "daily" / "2026-06-11.md").read_text(encoding="utf-8")
     assert "Agent Scores" in report_text
     assert "technical" in report_text
+    assert "fundamentals" in report_text
+
+
+def conn2_count(tmp_config, run_id):
+    conn = connect(tmp_config.db_path)
+    n = conn.execute(
+        "SELECT COUNT(*) FROM agent_scores WHERE run_id = ? AND agent = 'fundamentals'",
+        (run_id,),
+    ).fetchone()[0]
+    conn.close()
+    return n
 
 
 def test_agent_crash_is_isolated(tmp_config, fake_market_data, monkeypatch):

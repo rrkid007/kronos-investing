@@ -7,8 +7,38 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
+from trading_platform.data.fundamentals import FundamentalsSnapshot
 from trading_platform.data.market_data import MarketDataService, RefreshResult, TickerData
 from trading_platform.data.quality import validate_ohlcv
+
+
+def make_snapshot(ticker: str = "TEST", **overrides) -> FundamentalsSnapshot:
+    """Full-coverage snapshot of a strong, reasonably-priced business."""
+    from datetime import datetime, timezone
+
+    base = dict(
+        ticker=ticker,
+        fetched_at=datetime(2026, 6, 11, tzinfo=timezone.utc),
+        data_as_of=date(2026, 3, 31),
+        revenue_growth=0.12,
+        earnings_growth=0.15,
+        revenue_cagr_3y=0.10,
+        gross_margin=0.45,
+        operating_margin=0.28,
+        profit_margin=0.22,
+        return_on_equity=0.30,
+        debt_to_equity=0.6,
+        current_ratio=1.5,
+        net_cash_to_market_cap=0.02,
+        fcf_margin=0.20,
+        ocf_margin=0.25,
+        trailing_pe=24.0,
+        forward_pe=21.0,
+        ev_to_ebitda=16.0,
+        price_to_fcf=28.0,
+    )
+    base.update(overrides)
+    return FundamentalsSnapshot(**base)
 
 
 def make_ohlcv(

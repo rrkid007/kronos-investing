@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from trading_platform.agents.fundamentals import FundamentalsAgent
 from trading_platform.agents.technical import TechnicalAgent
 from trading_platform.core.config import AppConfig
 from trading_platform.core.db import connect, init_db
@@ -37,6 +38,7 @@ logger = logging.getLogger(__name__)
 AGENT_STAGES = ["technical", "kronos", "fundamentals", "news", "sec_filing"]
 AGENT_REGISTRY = {
     "technical": TechnicalAgent(),
+    "fundamentals": FundamentalsAgent(),
 }
 DATA_STAGE = "market_data"
 
@@ -178,8 +180,8 @@ def _write_report(
         lines += [""]
 
     lines += [
-        "_Pipeline (phase 2): decisions, risk results, and account summary "
-        "will appear here as phases land._",
+        "_Decisions, risk results, and account summary will appear here as "
+        "phases land._",
         "",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
