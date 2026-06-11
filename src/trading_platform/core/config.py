@@ -60,6 +60,7 @@ class Settings(BaseModel):
     db_path: Path = Path("db/investment_research.sqlite")
     reports_dir: Path = Path("reports")
     timezone: str = "America/New_York"
+    benchmarks: list[str] = Field(default_factory=lambda: ["SPY", "QQQ"])
     llm: LLMSettings = LLMSettings()
     kronos: KronosSettings = KronosSettings()
     news: NewsSettings = NewsSettings()

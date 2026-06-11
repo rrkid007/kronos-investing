@@ -27,6 +27,7 @@ from pathlib import Path
 import pandas as pd
 
 from trading_platform.agents.decision import DecisionEngine
+from trading_platform.analytics.performance import performance_summary
 from trading_platform.agents.fundamentals import FundamentalsAgent
 from trading_platform.agents.kronos import KronosAgent
 from trading_platform.agents.news import NewsAgent
@@ -182,10 +183,11 @@ def run_daily(
         mark_stage(conn, run_id, ORDERS_STAGE, "completed",
                    detail=f"{n_orders} order(s) submitted")
 
-        # --- pass 6: mark-to-market snapshot
+        # --- pass 6: mark-to-market snapshot + benchmark series upkeep
         mark_stage(conn, run_id, SNAPSHOT_STAGE, "running")
         closes = {t: float(df["close"].iloc[-1]) for t, df in frames.items()}
         summary = snapshot_account(conn, run_date, closes)
+        _refresh_benchmarks(conn, config, market_data, injected_market_data, as_of)
         mark_stage(conn, run_id, SNAPSHOT_STAGE, "completed",
                    detail=f"equity {summary['equity']:,.0f}")
 
@@ -427,6 +429,19 @@ MAX_DATA_WORKERS = 8
 PARALLEL_AGENT_STAGES = {"fundamentals"}  # network-bound, stateless, no conn use
 
 
+def _refresh_benchmarks(conn, config, market_data, injected: bool, as_of: date) -> None:
+    """Keep SPY/QQQ in the price cache for performance comparison.
+
+    Best-effort: benchmarks aren't scored, so a failed refresh logs and moves
+    on. Skipped entirely when a fake service is injected (tests)."""
+    if injected:
+        return
+    for ticker in config.settings.benchmarks:
+        result = market_data.refresh(ticker, as_of=as_of)
+        if result.error:
+            logger.warning("benchmark refresh failed for %s: %s", ticker, result.error)
+
+
 def _refresh_market_data(
     conn, config, market_data, injected: bool, run_id: str,
     symbols: list[str], as_of: date,
@@ -652,6 +667,35 @@ def _write_report(
         lines += [f"- **{t}** — skipped: {reason}" for t, reason in sorted(skipped.items())]
         lines += [""]
 
+    perf = performance_summary(conn, config.settings.benchmarks)
+    if perf["n_snapshots"] >= 2:
+        fmt_pct = lambda v: f"{v * 100:.2f}%" if v is not None else "n/a"  # noqa: E731
+        lines += [
+            "## Performance",
+            "",
+            f"- Total return: **{fmt_pct(perf['total_return'])}** "
+            f"({perf['window']['start']} → {perf['window']['end']})",
+            f"- Annualized: {fmt_pct(perf['annualized_return'])}  |  "
+            f"Sharpe: {perf['sharpe'] if perf['sharpe'] is not None else 'n/a'}  |  "
+            f"Max drawdown: {fmt_pct(perf['max_drawdown'])}",
+        ]
+        t = perf["trades"]
+        if t["n_trades"]:
+            lines += [
+                f"- Trades: {t['n_trades']} closed, win rate "
+                f"{fmt_pct(t['win_rate'])}, avg return {t['avg_return_pct']:.2f}%, "
+                f"total P&L ${t['total_pnl']:,.2f}",
+            ]
+        for bench, b in (perf.get("benchmarks") or {}).items():
+            lines += [f"- {bench} same window: {fmt_pct(b['total_return'])}"]
+        if perf["signal_hit_rates"]:
+            lines += ["", "Per-signal hit rates (10-day forward):", ""]
+            lines += [
+                f"- {agent}: {s['hits']}/{s['n_calls']} = {fmt_pct(s['hit_rate'])}"
+                for agent, s in sorted(perf["signal_hit_rates"].items())
+            ]
+        lines += [""]
+
     # Run health: silent failures are the enemy (A5).
     failures = conn.execute(
         "SELECT stage, ticker, detail FROM run_stages "
@@ -675,4 +719,50 @@ def _write_report(
                   f"newest {freshness['newest']}"]
     lines += [""]
     path.write_text("\n".join(lines), encoding="utf-8")
+
+    _write_json_report(conn, config, run_id, run_date, skipped, duration, perf)
+    return path
+
+
+def _write_json_report(
+    conn, config: AppConfig, run_id: str, run_date: str,
+    skipped: dict[str, str], duration: float, perf: dict,
+) -> Path:
+    """Machine-readable twin of the markdown report (dashboard, tooling)."""
+    import json as _json
+
+    decisions = [
+        dict(r) for r in conn.execute(
+            "SELECT ticker, action, final_score, sizing_hint, reason FROM decisions "
+            "WHERE run_id = ? ORDER BY final_score DESC", (run_id,),
+        ).fetchall()
+    ]
+    scores = [
+        dict(r) for r in conn.execute(
+            "SELECT ticker, agent, score, confidence, direction FROM agent_scores "
+            "WHERE run_id = ? ORDER BY ticker, agent", (run_id,),
+        ).fetchall()
+    ]
+    snapshot = conn.execute(
+        "SELECT * FROM account_snapshots WHERE snapshot_date = ?", (run_date,)
+    ).fetchone()
+    pending = [
+        dict(r) for r in conn.execute(
+            "SELECT order_id, ticker, side, qty FROM orders "
+            "WHERE status = 'awaiting_approval' ORDER BY ticker"
+        ).fetchall()
+    ]
+    payload = {
+        "run_id": run_id,
+        "run_date": run_date,
+        "duration_seconds": round(duration, 1),
+        "account": dict(snapshot) if snapshot else None,
+        "decisions": decisions,
+        "agent_scores": scores,
+        "pending_orders": pending,
+        "skipped_tickers": skipped,
+        "performance": perf,
+    }
+    path = config.reports_dir / "daily" / f"{run_date}.json"
+    path.write_text(_json.dumps(payload, indent=2, default=str), encoding="utf-8")
     return path

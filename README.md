@@ -134,4 +134,16 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   weekdays, `Persistent=true` catch-up), model prefetch script, and
   [SETUP.md](deploy/SETUP.md).
 
-See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 10 (reporting + performance analytics).
+- **Phase 10 (performance analytics)** — complete: equity-curve metrics
+  (total/annualized return, Sharpe at zero risk-free over 252d, max
+  drawdown), closed-trade reconstruction from fills (weighted-average cost,
+  win rate, avg return), SPY/QQQ benchmark comparison over the live window
+  (benchmarks auto-maintained in the price cache each run), and per-signal
+  hit rates (S6): every directional call (score ≥60 or ≤40, confidence > 0)
+  graded against the 10-day forward return — the evidence base for future
+  weight tuning. Reports now have a machine-readable JSON twin and a
+  Performance section once history accumulates; `scripts/show_performance.py`
+  prints the summary. Every metric is pinned by hand-computed test values,
+  including a simulated 21-day month.
+
+See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 11 (HTMX dashboard).

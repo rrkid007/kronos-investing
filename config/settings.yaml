@@ -2,6 +2,7 @@
 db_path: db/investment_research.sqlite
 reports_dir: reports
 timezone: America/New_York
+benchmarks: [SPY, QQQ]   # tracked in price_cache for performance comparison
 
 llm:
   provider: ollama
