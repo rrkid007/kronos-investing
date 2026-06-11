@@ -1,0 +1,53 @@
+<div id="approvals">
+  <h2>Pending Approvals {% if pending %}<span class="down">({{ pending | length }})</span>{% endif %}</h2>
+  {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+  {% if pending %}
+  <table>
+    <tr><th>Run</th><th>Ticker</th><th>Side</th><th class="num">Qty</th>
+        <th class="num">Est. Value</th><th class="num">Score</th><th>Reason</th><th></th></tr>
+    {% for o in pending %}
+    <tr>
+      <td class="dim">{{ o.run_date }}</td>
+      <td>{{ o.ticker }}</td>
+      <td><span class="badge {{ o.side }}">{{ o.side }}</span></td>
+      <td class="num">{{ "{:g}".format(o.qty) }}</td>
+      <td class="num">{{ "${:,.0f}".format(o.est_value) if o.est_value else "—" }}</td>
+      <td class="num">{{ "{:.1f}".format(o.final_score) if o.final_score is not none else "—" }}</td>
+      <td class="dim" style="max-width:280px">{{ o.reason[:60] }}</td>
+      <td style="white-space:nowrap">
+        <button class="approve"
+                hx-post="/orders/{{ o.order_id }}/approve"
+                hx-target="#approvals" hx-swap="outerHTML">Approve</button>
+        <button class="reject"
+                hx-post="/orders/{{ o.order_id }}/reject"
+                hx-target="#approvals" hx-swap="outerHTML"
+                hx-confirm="Reject {{ o.side }} {{ o.ticker }} x{{ o.qty }}?">Reject</button>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <div class="dim" style="font-size:11px;margin-top:6px">
+    unapproved orders expire at the next daily run · approved orders fill at next open
+  </div>
+  {% else %}
+  <div class="empty">no orders awaiting approval</div>
+  {% endif %}
+
+  {% if recent %}
+  <h2 style="margin-top:16px">Recent Order Activity</h2>
+  <table>
+    <tr><th>Run</th><th>Ticker</th><th>Side</th><th class="num">Qty</th>
+        <th>Status</th><th class="num">Fill</th></tr>
+    {% for o in recent %}
+    <tr>
+      <td class="dim">{{ o.run_date }}</td>
+      <td>{{ o.ticker }}</td>
+      <td><span class="badge {{ o.side }}">{{ o.side }}</span></td>
+      <td class="num">{{ "{:g}".format(o.qty) }}</td>
+      <td class="{{ 'up' if o.status == 'filled' else 'dim' }}">{{ o.status }}</td>
+      <td class="num">{{ "{:,.2f}".format(o.fill_price) if o.fill_price else "—" }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>

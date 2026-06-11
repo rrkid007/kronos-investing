@@ -146,4 +146,13 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   prints the summary. Every metric is pinned by hand-computed test values,
   including a simulated 21-day month.
 
-See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 11 (HTMX dashboard).
+- **Phase 11 (dashboard)** — complete: FastAPI + Jinja2 + HTMX, server-
+  rendered terminal aesthetic, zero build step. Account KPIs, server-rendered
+  SVG equity curve, performance + per-signal hit rates, the approval queue
+  with one-click approve/reject (HTMX partial swaps; the only write path),
+  open positions with live unrealized P&L, decisions with risk verdicts,
+  the agent score leaderboard (zero-confidence signals visibly dotted), run
+  health, and a report browser. `uv run python scripts/run_dashboard.py`
+  → http://127.0.0.1:8420 (localhost-only by default; no auth layer).
+
+See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 12 (historical replay backtester).

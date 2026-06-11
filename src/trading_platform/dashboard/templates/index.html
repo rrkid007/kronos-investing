@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid">
+
+  <section class="card span8">
+    <h2>Account</h2>
+    {% if account.snapshot %}
+    <div class="kpis">
+      <div class="kpi"><div class="label">Equity</div>
+        <div class="value big">${{ "{:,.2f}".format(account.snapshot.equity) }}</div></div>
+      <div class="kpi"><div class="label">Cash</div>
+        <div class="value">${{ "{:,.2f}".format(account.cash) }}</div></div>
+      <div class="kpi"><div class="label">Realized P&L</div>
+        <div class="value {{ 'up' if account.realized_pnl >= 0 else 'down' }}">
+          ${{ "{:,.2f}".format(account.realized_pnl) }}</div></div>
+      <div class="kpi"><div class="label">Unrealized P&L</div>
+        <div class="value {{ 'up' if account.snapshot.unrealized_pnl >= 0 else 'down' }}">
+          ${{ "{:,.2f}".format(account.snapshot.unrealized_pnl) }}</div></div>
+      <div class="kpi"><div class="label">Positions</div>
+        <div class="value">{{ account.positions | length }}</div></div>
+    </div>
+    {% else %}<div class="empty">no snapshots yet — run the daily analysis</div>{% endif %}
+    {% if equity_svg %}
+    <div class="chart" style="margin-top:14px">{{ equity_svg | safe }}</div>
+    <div class="dim" style="font-size:11px">{{ equity_points[0][0] }} → {{ equity_points[-1][0] }}</div>
+    {% endif %}
+  </section>
+
+  <section class="card span4">
+    <h2>Performance</h2>
+    {% set perf = performance %}
+    {% if perf.n_snapshots >= 2 %}
+    <table>
+      <tr><td class="dim">Total return</td><td class="num {{ 'up' if perf.total_return and perf.total_return > 0 else 'down' if perf.total_return else '' }}">
+        {{ "{:.2f}%".format(perf.total_return * 100) if perf.total_return is not none else "n/a" }}</td></tr>
+      <tr><td class="dim">Sharpe</td><td class="num">{{ perf.sharpe if perf.sharpe is not none else "n/a" }}</td></tr>
+      <tr><td class="dim">Max drawdown</td><td class="num down">
+        {{ "{:.2f}%".format(perf.max_drawdown * 100) if perf.max_drawdown is not none else "n/a" }}</td></tr>
+      <tr><td class="dim">Win rate</td><td class="num">
+        {{ "{:.0f}%".format(perf.trades.win_rate * 100) if perf.trades.win_rate is not none else "n/a" }}
+        <span class="dim">({{ perf.trades.n_trades }} trades)</span></td></tr>
+      {% for bench, b in (perf.benchmarks or {}).items() %}
+      <tr><td class="dim">{{ bench }} (same window)</td><td class="num">
+        {{ "{:.2f}%".format(b.total_return * 100) if b.total_return is not none else "n/a" }}</td></tr>
+      {% endfor %}
+    </table>
+    {% if perf.signal_hit_rates %}
+    <h2 style="margin-top:14px">Signal hit rates · 10d</h2>
+    <table>
+      {% for agent, s in perf.signal_hit_rates.items() | sort %}
+      <tr><td class="dim">{{ agent }}</td>
+          <td class="num">{{ s.hits }}/{{ s.n_calls }}
+            {% if s.hit_rate is not none %}= {{ "{:.0f}%".format(s.hit_rate * 100) }}{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    {% else %}<div class="empty">accumulating history…</div>{% endif %}
+  </section>
+
+  <section class="card span12" id="approvals-card">
+    {% include "partials/approvals.html" %}
+  </section>
+
+  {% if account.positions %}
+  <section class="card span12">
+    <h2>Open Positions</h2>
+    <table>
+      <tr><th>Ticker</th><th class="num">Qty</th><th class="num">Avg Cost</th>
+          <th class="num">Last</th><th class="num">Value</th>
+          <th class="num">Unrealized</th><th>Opened</th></tr>
+      {% for p in account.positions %}
+      <tr>
+        <td>{{ p.ticker }}</td>
+        <td class="num">{{ "{:g}".format(p.qty) }}</td>
+        <td class="num">{{ "{:,.2f}".format(p.avg_cost) }}</td>
+        <td class="num">{{ "{:,.2f}".format(p.last) }}</td>
+        <td class="num">{{ "{:,.0f}".format(p.value) }}</td>
+        <td class="num {{ 'up' if p.unrealized >= 0 else 'down' }}">
+          {{ "{:+,.2f}".format(p.unrealized) }} ({{ "{:+.1f}%".format(p.unrealized_pct) }})</td>
+        <td class="dim">{{ p.opened_at }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+  {% endif %}
+
+  <section class="card span6">
+    <h2>Decisions {% if run %}· {{ run.run_date }}{% endif %}</h2>
+    {% if decisions %}
+    <table>
+      <tr><th>Ticker</th><th>Action</th><th class="num">Score</th>
+          <th class="num">Size</th><th>Risk</th></tr>
+      {% for d in decisions %}
+      <tr title="{{ d.reason }}">
+        <td>{{ d.ticker }}</td>
+        <td><span class="badge {{ d.action }}">{{ d.action }}</span></td>
+        <td class="num">{{ "{:.1f}".format(d.final_score) }}</td>
+        <td class="num">{{ "${:,.0f}".format(d.sizing_hint) if d.sizing_hint else "—" }}</td>
+        <td>{% if d.risk_approved is none %}<span class="dim">—</span>
+            {% elif d.risk_approved %}<span class="up">✓</span>
+            {% else %}<span class="down" title="{{ d.risk_errors | join('; ') }}">✗</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}<div class="empty">no decisions yet</div>{% endif %}
+  </section>
+
+  <section class="card span6">
+    <h2>Agent Leaderboard</h2>
+    {% if leaderboard %}
+    <table>
+      <tr><th>Ticker</th>
+        {% for a in agent_stages %}<th class="num">{{ a[:5] }}</th>{% endfor %}
+        <th class="num">Final</th></tr>
+      {% for row in leaderboard %}
+      <tr>
+        <td>{{ row.ticker }}</td>
+        {% for a in agent_stages %}
+          {% set s = row.agents[a] %}
+          <td class="num">
+            {% if s %}
+              <span class="scorebar {{ 'up' if s.score >= 60 else 'down' if s.score <= 40 else 'dim' }}"
+                    title="confidence {{ s.confidence }}">{{ "{:.0f}".format(s.score) }}</span>
+              {% if s.confidence == 0 %}<span class="dim">·</span>{% endif %}
+            {% else %}<span class="dim">—</span>{% endif %}
+          </td>
+        {% endfor %}
+        <td class="num"><strong>{{ "{:.1f}".format(row.final_score) if row.final_score is not none else "—" }}</strong></td>
+      </tr>
+      {% endfor %}
+    </table>
+    <div class="dim" style="font-size:11px;margin-top:6px">· = zero confidence (ignored by decision engine)</div>
+    {% else %}<div class="empty">no scores yet</div>{% endif %}
+  </section>
+
+  <section class="card span12">
+    <h2>Run Health {% if run %}· {{ run.run_id }} ({{ run.status }}){% endif %}</h2>
+    {% if health %}
+      {% if health.failures %}
+      <table>
+        <tr><th>Stage</th><th>Ticker</th><th>Detail</th></tr>
+        {% for f in health.failures %}
+        <tr><td class="down">{{ f.stage }}</td><td>{{ f.ticker }}</td>
+            <td class="dim">{{ f.detail }}</td></tr>
+        {% endfor %}
+      </table>
+      {% else %}<div class="up">all {{ health.n_stages }} stages clean</div>{% endif %}
+    {% else %}<div class="empty">no runs yet</div>{% endif %}
+  </section>
+
+</div>
+{% endblock %}

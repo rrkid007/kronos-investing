@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Reports — Research Terminal{% endblock %}
+{% block content %}
+<div class="grid">
+  <section class="card span6">
+    <h2>Daily Reports</h2>
+    {% if dates %}
+    <table>
+      {% for d in dates %}
+      <tr><td><a href="/reports/{{ d }}">{{ d }}</a></td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<div class="empty">no reports yet</div>{% endif %}
+  </section>
+</div>
+{% endblock %}

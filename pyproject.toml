@@ -10,6 +10,9 @@ dependencies = [
     "yfinance>=0.2.50",
     "requests>=2.31",
     "edgartools>=3.0",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "jinja2>=3.1",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +29,7 @@ kronos = [
 dev = [
     "pytest>=8.0",
     "ruff>=0.4",
+    "httpx>=0.27",  # FastAPI TestClient
 ]
 
 [build-system]

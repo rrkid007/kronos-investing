@@ -56,6 +56,11 @@ class ScheduleSettings(BaseModel):
     weekdays_only: bool = True
 
 
+class DashboardSettings(BaseModel):
+    host: str = "127.0.0.1"  # local-only by default; no auth layer
+    port: int = 8420
+
+
 class Settings(BaseModel):
     db_path: Path = Path("db/investment_research.sqlite")
     reports_dir: Path = Path("reports")
@@ -67,6 +72,7 @@ class Settings(BaseModel):
     sec: SECSettings = SECSettings()
     notifications: NotificationSettings = NotificationSettings()
     schedule: ScheduleSettings = ScheduleSettings()
+    dashboard: DashboardSettings = DashboardSettings()
 
 
 class WatchlistEntry(BaseModel):
