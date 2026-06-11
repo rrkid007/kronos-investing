@@ -10,9 +10,10 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Version 1: full base schema. Version 2: broker routing columns (phase 13).
+# Version 3: discovery — candidate universe + watchlist suggestions (phase 14).
 MIGRATIONS: dict[int, str] = {
     1: """
     CREATE TABLE runs (
@@ -160,6 +161,31 @@ MIGRATIONS: dict[int, str] = {
     2: """
     ALTER TABLE orders ADD COLUMN broker TEXT NOT NULL DEFAULT 'local';
     ALTER TABLE orders ADD COLUMN broker_order_id TEXT;
+    """,
+    3: """
+    CREATE TABLE universe (
+        ticker           TEXT PRIMARY KEY,
+        name             TEXT,
+        sector           TEXT,
+        refreshed_at     TEXT NOT NULL,
+        last_screened_at TEXT
+    );
+
+    CREATE TABLE watchlist_suggestions (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        batch_id          TEXT NOT NULL,
+        created_at        TEXT NOT NULL,
+        ticker            TEXT NOT NULL,
+        sector            TEXT,
+        combined_score    REAL NOT NULL,
+        technical_score   REAL,
+        fundamental_score REAL,
+        sector_gap_bonus  REAL NOT NULL DEFAULT 0,
+        rationale         TEXT,
+        status            TEXT NOT NULL DEFAULT 'suggested'
+                          CHECK (status IN ('suggested','added','dismissed'))
+    );
+    CREATE INDEX idx_suggestions_batch ON watchlist_suggestions(batch_id);
     """,
 }
 

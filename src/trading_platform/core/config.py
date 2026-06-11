@@ -61,6 +61,15 @@ class DashboardSettings(BaseModel):
     port: int = 8420
 
 
+class DiscoverySettings(BaseModel):
+    max_candidates: int = 60        # universe members screened per run (rotates)
+    top_n: int = 5                  # suggestions surfaced per batch
+    fundamentals_floor: float = 55.0  # quality floor — blocks momentum junk
+    min_price: float = 5.0
+    universe_max_age_days: int = 30
+    max_watchlist_size: int = 20    # past this, suggestions require a removal
+
+
 class ExecutionSettings(BaseModel):
     # "local": internal simulated fills at next open (default).
     # "alpaca_paper": route approved orders to Alpaca's PAPER endpoint as
@@ -84,6 +93,7 @@ class Settings(BaseModel):
     schedule: ScheduleSettings = ScheduleSettings()
     dashboard: DashboardSettings = DashboardSettings()
     execution: ExecutionSettings = ExecutionSettings()
+    discovery: DiscoverySettings = DiscoverySettings()
 
 
 class WatchlistEntry(BaseModel):

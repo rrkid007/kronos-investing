@@ -83,7 +83,7 @@ def test_max_positions_rejected():
 
 def test_sector_cap_trims_and_rejects():
     # Technology already at 35% of 100k equity; cap is 40% -> 5k room
-    state = fresh_state(cash=65_000.0, sector_values={"Technology": 35_000.0})
+    state = fresh_state(cash=65_000.0, sector_values={"Information Technology": 35_000.0})
     state.equity = 100_000.0
     a = agent.assess_buy(buy_decision("AAPL", score=100.0), 100.0, DF, state)
     assert a.approved
@@ -91,11 +91,11 @@ def test_sector_cap_trims_and_rejects():
     assert a.fit_score <= 85.0  # sector trim penalty
 
     # Sector full -> reject
-    state2 = fresh_state(cash=60_000.0, sector_values={"Technology": 40_000.0})
+    state2 = fresh_state(cash=60_000.0, sector_values={"Information Technology": 40_000.0})
     state2.equity = 100_000.0
     a2 = agent.assess_buy(buy_decision("AAPL"), 100.0, DF, state2)
     assert not a2.approved
-    assert "sector Technology at cap" in a2.rejection
+    assert "sector Information Technology at cap" in a2.rejection
 
 
 def test_cash_reserve_floor_trims_and_rejects():
@@ -136,7 +136,7 @@ def test_greedy_state_consumption():
     state = fresh_state(cash=100_000.0)
     first = agent.assess_buy(buy_decision("MSFT", score=100.0), 100.0, DF, state)
     assert first.approved
-    state.apply_buy("MSFT", "Technology", first.target_value)
+    state.apply_buy("MSFT", "Information Technology", first.target_value)
 
     assert "MSFT" in state.held_tickers
     second = agent.assess_buy(buy_decision("MSFT"), 100.0, DF, state)

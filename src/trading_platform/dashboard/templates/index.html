@@ -133,6 +133,29 @@
     {% else %}<div class="empty">no scores yet</div>{% endif %}
   </section>
 
+  {% if suggestions %}
+  <section class="card span12">
+    <h2>Watchlist Suggestions <span class="dim">· approve via discover_stocks.py --add</span></h2>
+    <table>
+      <tr><th>Ticker</th><th>Sector</th><th class="num">Technical</th>
+          <th class="num">Fundamentals</th><th class="num">Gap</th>
+          <th class="num">Combined</th><th>Status</th><th>Rationale</th></tr>
+      {% for s in suggestions %}
+      <tr>
+        <td>{{ s.ticker }}</td>
+        <td class="dim">{{ s.sector }}</td>
+        <td class="num">{{ "{:.1f}".format(s.technical_score) }}</td>
+        <td class="num">{{ "{:.1f}".format(s.fundamental_score) }}</td>
+        <td class="num">{{ "+{:.0f}".format(s.sector_gap_bonus) }}</td>
+        <td class="num"><strong>{{ "{:.1f}".format(s.combined_score) }}</strong></td>
+        <td class="{{ 'up' if s.status == 'added' else 'dim' }}">{{ s.status }}</td>
+        <td class="dim" style="max-width:380px">{{ s.rationale[:90] }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+  {% endif %}
+
   <section class="card span12">
     <h2>Run Health {% if run %}· {{ run.run_id }} ({{ run.status }}){% endif %}</h2>
     {% if health %}

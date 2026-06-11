@@ -85,6 +85,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
                 "decisions": queries.decisions_for_run(conn, run_id) if run_id else [],
                 "leaderboard": queries.leaderboard(conn, run_id) if run_id else [],
                 "health": queries.run_health(conn, run_id) if run_id else None,
+                "suggestions": queries.latest_suggestions(conn),
                 **approvals_context(conn),
             }
             return templates.TemplateResponse(request, "index.html", context)

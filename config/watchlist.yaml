@@ -1,11 +1,13 @@
-# Tickers under research. Sector tags drive the Risk Engine's sector-exposure limits.
+# Tickers under research. Sector tags drive the Risk Engine's sector-exposure
+# limits and the Discovery Agent's gap analysis — use official GICS sector
+# names (they must match the S&P 500 universe taxonomy).
 tickers:
   - symbol: AAPL
-    sector: Technology
+    sector: Information Technology
   - symbol: MSFT
-    sector: Technology
+    sector: Information Technology
   - symbol: NVDA
-    sector: Technology
+    sector: Information Technology
   - symbol: AMZN
     sector: Consumer Discretionary
   - symbol: META
@@ -13,7 +15,7 @@ tickers:
   - symbol: GOOGL
     sector: Communication Services
   - symbol: AVGO
-    sector: Technology
+    sector: Information Technology
   - symbol: COST
     sector: Consumer Staples
   - symbol: V

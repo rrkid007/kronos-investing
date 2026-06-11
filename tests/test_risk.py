@@ -146,13 +146,13 @@ def test_position_exactly_at_cap_passes():
 
 def test_sector_breach_rejected():
     # Technology at 39%; +1100 -> 40.1% > 40%
-    s = state(sector_values={"Technology": 39_000.0})
+    s = state(sector_values={"Information Technology": 39_000.0})
     result = engine.evaluate_buy(buy("AAPL"), qty=11, price=100.0, state=s)
     assert "sector_limit" in failed_rules(result)
 
 
 def test_sector_exactly_at_cap_passes():
-    s = state(sector_values={"Technology": 39_000.0})
+    s = state(sector_values={"Information Technology": 39_000.0})
     result = engine.evaluate_buy(buy("AAPL"), qty=10, price=100.0, state=s)
     assert "sector_limit" not in failed_rules(result)
 
@@ -187,7 +187,7 @@ def test_reserve_floor_exactly_met_passes():
 # --- multiple violations all reported ---------------------------------------
 
 def test_all_violations_named():
-    s = state(cash=500.0, equity=100_000.0, sector_values={"Technology": 40_000.0})
+    s = state(cash=500.0, equity=100_000.0, sector_values={"Information Technology": 40_000.0})
     result = engine.evaluate_buy(
         buy(score=50.0, kronos=(10.0, 0.9)), qty=200, price=100.0, state=s
     )

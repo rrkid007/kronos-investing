@@ -179,4 +179,17 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   path. Live round-trip verification awaits Alpaca paper keys (see
   [deploy/SETUP.md](deploy/SETUP.md) §6).
 
-**All 13 planned phases are complete.** See [PLAN.md](PLAN.md) §3 for the roadmap.
+- **Phase 14 (Discovery Agent)** — complete: weekly screen of the S&P 500
+  universe (Wikipedia constituents with GICS sectors, cached monthly) for
+  watchlist candidates. Funnel: gap-sector-first candidate selection rotating
+  through the universe, the standard quality gate + the SAME technical and
+  fundamentals rubrics the daily pipeline uses, then ranking at live relative
+  weights plus a sector-gap bonus, with a fundamentals quality floor blocking
+  momentum junk. Suggestions are proposals only — `discover_stocks.py --add`
+  is the human's pen (appends to watchlist.yaml, capacity-capped with the
+  weakest incumbent flagged for replacement). Watchlist sector tags now use
+  official GICS names — the live run caught a taxonomy mismatch ("Technology"
+  vs GICS "Information Technology") that was mis-awarding gap bonuses.
+  `uv run python scripts/discover_stocks.py`
+
+**All planned phases (0–14) are complete.** See [PLAN.md](PLAN.md) §3 for the roadmap.

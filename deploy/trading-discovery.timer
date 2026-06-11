@@ -1,0 +1,12 @@
+[Unit]
+Description=Run watchlist discovery weekly (Saturday morning)
+
+[Timer]
+# Saturday: markets closed, no contention with the daily analysis run, and
+# suggestions are waiting for review before Monday.
+OnCalendar=Sat 09:00 America/New_York
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

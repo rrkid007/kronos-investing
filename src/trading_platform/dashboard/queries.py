@@ -162,6 +162,20 @@ def run_health(conn: sqlite3.Connection, run_id: str) -> dict:
     }
 
 
+def latest_suggestions(conn: sqlite3.Connection) -> list[dict]:
+    batch = conn.execute(
+        "SELECT batch_id FROM watchlist_suggestions ORDER BY created_at DESC LIMIT 1"
+    ).fetchone()
+    if batch is None:
+        return []
+    rows = conn.execute(
+        "SELECT * FROM watchlist_suggestions WHERE batch_id = ? "
+        "ORDER BY combined_score DESC",
+        (batch["batch_id"],),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def list_report_dates(reports_dir: Path) -> list[str]:
     daily = reports_dir / "daily"
     if not daily.exists():

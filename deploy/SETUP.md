@@ -51,16 +51,25 @@ an ntfy topic (e.g. `https://ntfy.sh/your-private-topic`) and set
 ## 4. Schedule
 
 ```bash
-sudo cp deploy/trading-daily.service deploy/trading-daily.timer /etc/systemd/system/
+sudo cp deploy/trading-daily.service deploy/trading-daily.timer \
+        deploy/trading-discovery.service deploy/trading-discovery.timer \
+        /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now trading-daily.timer
+sudo systemctl enable --now trading-daily.timer trading-discovery.timer
 
-systemctl list-timers trading-daily.timer   # confirm next trigger
+systemctl list-timers 'trading-*'           # confirm next triggers
 sudo systemctl start trading-daily.service  # manual test run
 journalctl -u trading-daily.service -f      # watch it
 ```
 
-Why systemd timer over cron: `Persistent=true` runs a missed trigger at next
+Two timers:
+- **trading-daily** — weekdays 17:30 ET: the full analysis/trading run.
+- **trading-discovery** — Saturdays 09:00 ET: screens ~60 S&P 500 candidates
+  for watchlist suggestions (rotating through the universe over the weeks).
+  Review in the dashboard or `reports/discovery/`, adopt with
+  `uv run python scripts/discover_stocks.py --add TICKER`.
+
+Why systemd timers over cron: `Persistent=true` runs a missed trigger at next
 boot, and journald captures all logs. Runs are idempotent and resumable, and
 unapproved orders expire at the next run — a skipped or crashed day degrades
 safely.
@@ -74,6 +83,9 @@ safely.
 3. Approved orders fill at the next run at that day's open.
 4. Reports land in `reports/daily/`, the audit trail in
    `db/investment_research.sqlite`.
+5. Weekly (after the Saturday discovery run): review watchlist suggestions in
+   the dashboard or `reports/discovery/`; adopt one with
+   `uv run python scripts/discover_stocks.py --add TICKER`.
 
 ## 6. Optional: Alpaca paper broker
 
