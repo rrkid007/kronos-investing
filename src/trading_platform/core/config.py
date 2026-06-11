@@ -22,9 +22,14 @@ class LLMSettings(BaseModel):
 
 
 class KronosSettings(BaseModel):
-    model_id: str = "NeoQuasar/Kronos-base"
+    model_id: str = "NeoQuasar/Kronos-small"
+    tokenizer_id: str = "NeoQuasar/Kronos-Tokenizer-base"
     horizon_days: int = 10
-    context_candles: int = 400
+    context_candles: int = 400  # input window; model max_context is 512
+    max_context: int = 512
+    sample_count: int = 8       # forecast paths per ticker; dispersion -> confidence
+    temperature: float = 1.0
+    top_p: float = 0.9
 
 
 class NewsSettings(BaseModel):

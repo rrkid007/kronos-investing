@@ -10,6 +10,16 @@ dependencies = [
     "yfinance>=0.2.50",
 ]
 
+[project.optional-dependencies]
+# Kronos forecasting (heavy: pulls PyTorch). Install: uv sync --extra kronos
+kronos = [
+    "torch>=2.0",
+    "einops>=0.8",
+    "huggingface-hub>=0.30",
+    "safetensors>=0.4",
+    "tqdm>=4.66",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",
@@ -29,3 +39,4 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = ["src/trading_platform/vendor"]

@@ -1,11 +1,10 @@
 """Daily pipeline orchestrator.
 
-Phase 2: the Technical Agent is live; remaining research stages are no-ops
-until their phases land. Flow per ticker: market data refresh + quality gate,
-then each registered agent scores the ticker and persists an AgentResult.
-An agent that crashes is isolated — the stage is marked failed, a neutral
-zero-confidence score is stored so the decision layer can ignore it, and the
-run continues.
+Flow per ticker: market data refresh + quality gate, then each registered
+agent scores the ticker and persists an AgentResult. Stages without a
+registered agent are no-ops until their phase lands. An agent that crashes is
+isolated — the stage is marked failed, a neutral zero-confidence score is
+stored so the decision layer can ignore it, and the run continues.
 """
 
 from __future__ import annotations
@@ -17,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 from trading_platform.agents.fundamentals import FundamentalsAgent
+from trading_platform.agents.kronos import KronosAgent
 from trading_platform.agents.technical import TechnicalAgent
 from trading_platform.core.config import AppConfig
 from trading_platform.core.db import connect, init_db
@@ -36,11 +36,17 @@ logger = logging.getLogger(__name__)
 # Research stages in fan-out order. Stages without a registered agent are
 # no-ops until their phase lands.
 AGENT_STAGES = ["technical", "kronos", "fundamentals", "news", "sec_filing"]
-AGENT_REGISTRY = {
-    "technical": TechnicalAgent(),
-    "fundamentals": FundamentalsAgent(),
-}
 DATA_STAGE = "market_data"
+
+
+def build_agent_registry(config: AppConfig) -> dict:
+    """One agent instance per run — the Kronos model loads once and is reused
+    across every ticker in the scan."""
+    return {
+        "technical": TechnicalAgent(),
+        "fundamentals": FundamentalsAgent(),
+        "kronos": KronosAgent(config.settings.kronos),
+    }
 
 
 def run_daily(
@@ -66,6 +72,7 @@ def run_daily(
         run_id = create_run(conn, run_date)
         logger.info("created run %s for %s", run_id, run_date)
 
+    registry = build_agent_registry(config)
     skipped: dict[str, str] = {}  # ticker -> reason, for the report
     try:
         for symbol in config.watchlist.symbols:
@@ -79,7 +86,7 @@ def run_daily(
                     mark_stage(conn, run_id, stage, "skipped", ticker=symbol,
                                detail=skipped.get(symbol, "market data unavailable"))
                     continue
-                _run_agent_stage(conn, run_id, stage, symbol, df)
+                _run_agent_stage(conn, registry, run_id, stage, symbol, df)
 
         _write_report(conn, config, run_id, run_date, skipped)
         complete_run(conn, run_id)
@@ -92,8 +99,10 @@ def run_daily(
     return run_id
 
 
-def _run_agent_stage(conn, run_id: str, stage: str, symbol: str, df: pd.DataFrame) -> None:
-    agent = AGENT_REGISTRY.get(stage)
+def _run_agent_stage(
+    conn, registry: dict, run_id: str, stage: str, symbol: str, df: pd.DataFrame
+) -> None:
+    agent = registry.get(stage)
     if agent is None:
         mark_stage(conn, run_id, stage, "completed", ticker=symbol,
                    detail="no-op (agent pending)")

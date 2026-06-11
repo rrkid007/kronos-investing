@@ -71,6 +71,27 @@ def make_ohlcv(
     )
 
 
+class FakeForecaster:
+    """Deterministic Kronos stand-in: linear paths to a configurable return."""
+
+    def __init__(self, final_return: float = 0.03, spread: float = 0.01,
+                 fail: Exception | None = None):
+        self.final_return = final_return
+        self.spread = spread
+        self.fail = fail
+
+    def predict_paths(self, df, horizon: int, sample_count: int) -> np.ndarray:
+        if self.fail is not None:
+            raise self.fail
+        last = float(df["close"].iloc[-1])
+        final_returns = np.linspace(
+            self.final_return - self.spread, self.final_return + self.spread, sample_count
+        )
+        return np.array([
+            np.linspace(last, last * (1.0 + r), horizon) for r in final_returns
+        ])
+
+
 class FakeMarketDataService(MarketDataService):
     """Serves canned frames; optionally fails specific tickers."""
 

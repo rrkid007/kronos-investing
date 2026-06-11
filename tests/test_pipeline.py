@@ -1,6 +1,6 @@
 import pytest
 
-from tests.fixtures import FakeMarketDataService, make_ohlcv, make_snapshot
+from tests.fixtures import FakeForecaster, FakeMarketDataService, make_ohlcv, make_snapshot
 from trading_platform.core.db import connect
 from trading_platform.pipeline import AGENT_STAGES, run_daily
 
@@ -16,6 +16,16 @@ def canned_fundamentals(monkeypatch):
     monkeypatch.setattr(
         "trading_platform.agents.fundamentals.fetch_fundamentals",
         lambda ticker: make_snapshot(ticker=ticker),
+    )
+
+
+@pytest.fixture(autouse=True)
+def canned_kronos(monkeypatch):
+    """Pipeline tests never load the Kronos model — canned upward paths."""
+    from trading_platform.agents.kronos import KronosAgent
+
+    monkeypatch.setattr(
+        KronosAgent, "_get_forecaster", lambda self: FakeForecaster(final_return=0.03)
     )
 
 
@@ -128,7 +138,7 @@ def test_agent_crash_is_isolated(tmp_config, fake_market_data, monkeypatch):
     def boom(self, ticker, run_id, df):
         raise ValueError("synthetic agent failure")
 
-    monkeypatch.setattr(type(pipeline.AGENT_REGISTRY["technical"]), "analyze", boom)
+    monkeypatch.setattr(pipeline.TechnicalAgent, "analyze", boom)
     run_id = run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
 
     conn = connect(tmp_config.db_path)

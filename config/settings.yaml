@@ -10,9 +10,16 @@ llm:
   timeout_seconds: 120
 
 kronos:
-  model_id: NeoQuasar/Kronos-base
+  # Kronos-small (25M params) for dev machines; switch to NeoQuasar/Kronos-base
+  # (102M) on the DGX Spark. Both use the 512-context base tokenizer.
+  model_id: NeoQuasar/Kronos-small
+  tokenizer_id: NeoQuasar/Kronos-Tokenizer-base
   horizon_days: 10
   context_candles: 400
+  max_context: 512
+  sample_count: 8   # forecast paths per ticker; path agreement drives confidence
+  temperature: 1.0
+  top_p: 0.9
 
 news:
   # Finnhub key is read from this environment variable — never stored in config.

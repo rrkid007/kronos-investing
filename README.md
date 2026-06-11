@@ -72,4 +72,13 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   (0.3 + 0.6 × coverage) — never guesses. Snapshots are current-only, never
   fed to the backtester (PLAN.md S2).
 
-See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 4 (Kronos Forecast Agent).
+- **Phase 4 (Kronos Forecast Agent)** — complete: vendored the MIT-licensed
+  Kronos model code (`src/trading_platform/vendor/kronos/`, patched to expose
+  per-sample forecast paths), lazy one-load-per-run forecaster with
+  cuda→mps→cpu auto-detect, and an agent that maps the mean 10-day forecast
+  return onto the score (±8% anchors) with confidence from path agreement.
+  Heavy deps are opt-in: `uv sync --extra kronos`. Without them the agent
+  degrades to an ignorable neutral score. CPU benchmark: ~10s/ticker
+  (8 paths, Kronos-small); switch `model_id` to Kronos-base on the DGX.
+
+See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 5 (News + SEC Filing agents).
