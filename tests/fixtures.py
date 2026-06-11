@@ -71,6 +71,30 @@ def make_ohlcv(
     )
 
 
+def make_ohlcv_piecewise(
+    segments: list[tuple[int, float]],
+    end: date = date(2026, 6, 11),
+    start_price: float = 100.0,
+    seed: int = 7,
+    daily_vol: float = 0.004,
+) -> pd.DataFrame:
+    """Bars with piecewise drift, e.g. [(300, 0.002), (30, -0.012)] = rally then crash."""
+    rng = np.random.default_rng(seed)
+    rets = np.concatenate([rng.normal(d, daily_vol, n) for n, d in segments])
+    n_rows = len(rets)
+    idx = pd.bdate_range(end=end, periods=n_rows)
+    close = start_price * np.exp(np.cumsum(rets))
+    open_ = close * (1 + rng.normal(0, 0.002, n_rows))
+    high = np.maximum(open_, close) * (1 + np.abs(rng.normal(0, 0.003, n_rows)))
+    low = np.minimum(open_, close) * (1 - np.abs(rng.normal(0, 0.003, n_rows)))
+    volume = rng.integers(1_000_000, 50_000_000, n_rows)
+    return pd.DataFrame(
+        {"open": open_, "high": high, "low": low, "close": close,
+         "adj_close": close, "volume": volume},
+        index=idx,
+    )
+
+
 class FakeLLM:
     """Returns a canned response object; optionally raises instead."""
 

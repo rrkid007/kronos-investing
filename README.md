@@ -155,4 +155,16 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   health, and a report browser. `uv run python scripts/run_dashboard.py`
   → http://127.0.0.1:8420 (localhost-only by default; no auth layer).
 
-See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 12 (historical replay backtester).
+- **Phase 12 (backtester)** — complete: day-by-day historical replay driving
+  the *same* TechnicalAgent / DecisionEngine / PortfolioAgent / RiskEngine /
+  order / fill / snapshot code the live pipeline uses, against a scratch
+  SQLite db that becomes a full per-backtest audit trail. PIT-safe by
+  construction: only technical (+ opt-in kronos) replays; agents see history
+  sliced to each simulated day; orders auto-approve and fill at next open.
+  Sensitivity sweep (weight split or entry threshold) produces a comparison
+  table; reports state every assumption. First real 2-year result: technical-
+  only is flat (−0.5%, 42% win rate) vs SPY +39% — evidence the multi-signal
+  blend has to earn its keep, exactly what the platform exists to measure.
+  `uv run python scripts/run_backtest.py --years 2 --sweep`
+
+See [PLAN.md](PLAN.md) §3 for the phase roadmap. Next: Phase 13 (Alpaca paper broker integration).
