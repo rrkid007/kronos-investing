@@ -203,4 +203,16 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   regime scaling (would require point-in-time macro data — stated in the
   assumptions).
 
-**All planned phases (0–15) are complete.** See [PLAN.md](PLAN.md) §3 for the roadmap.
+- **Phase 16 (pre-approval research memos)** — complete: every order awaiting
+  approval gets an ADVISORY research memo — thesis, bull case, bear case,
+  variant perception, measurable kill criteria, and a recommendation that
+  gates nothing — grounded strictly in the run's own audit trail (agent
+  scores and details, decision breakdown, sizing arithmetic, macro regime,
+  position context; dead signals are disclosed, never papered over). Routes
+  to any external OpenAI-compatible endpoint when configured
+  (`memo.base_url`/`model` + `MEMO_LLM_API_KEY`), falling back to local
+  Ollama. Memos appear inline in the dashboard approval queue, via
+  `approve_trades.py --memo ORDER_ID`, and in `reports/memos/`. A failed
+  memo never blocks an order.
+
+**All planned phases (0–16) are complete.** See [PLAN.md](PLAN.md) §3 for the roadmap.

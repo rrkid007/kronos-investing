@@ -61,6 +61,21 @@ class DashboardSettings(BaseModel):
     port: int = 8420
 
 
+class MemoSettings(BaseModel):
+    """Pre-approval research memos — ADVISORY ONLY, never in the trade path.
+
+    With base_url + api_key set, memos use an external OpenAI-compatible
+    endpoint (OpenAI, Anthropic's compat API, Groq, ...). Left empty, they
+    fall back to the local Ollama model. Either way a failed memo never
+    blocks an order."""
+
+    enabled: bool = True
+    base_url: str = ""               # e.g. https://api.anthropic.com/v1
+    api_key_env: str = "MEMO_LLM_API_KEY"
+    model: str = ""                  # e.g. claude-sonnet-4-6
+    timeout_seconds: int = 120
+
+
 class MacroSettings(BaseModel):
     enabled: bool = True
     # Component thresholds (points 0/1/2 each):
@@ -111,6 +126,7 @@ class Settings(BaseModel):
     execution: ExecutionSettings = ExecutionSettings()
     discovery: DiscoverySettings = DiscoverySettings()
     macro: MacroSettings = MacroSettings()
+    memo: MemoSettings = MemoSettings()
 
 
 class WatchlistEntry(BaseModel):

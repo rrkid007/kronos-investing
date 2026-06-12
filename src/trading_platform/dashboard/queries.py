@@ -64,6 +64,10 @@ def pending_orders(conn: sqlite3.Connection) -> list[dict]:
     out = []
     for o in rows:
         notes = json.loads(o["notes"] or "{}")
+        memo = conn.execute(
+            "SELECT recommendation, memo_md FROM research_memos WHERE order_id = ?",
+            (o["order_id"],),
+        ).fetchone()
         out.append({
             "order_id": o["order_id"],
             "run_date": o["run_date"],
@@ -74,6 +78,8 @@ def pending_orders(conn: sqlite3.Connection) -> list[dict]:
             "final_score": notes.get("final_score"),
             "reason": notes.get("reason", ""),
             "expires_at": o["expires_at"],
+            "memo_recommendation": memo["recommendation"] if memo else None,
+            "memo_md": memo["memo_md"] if memo else None,
         })
     return out
 

@@ -43,6 +43,16 @@ schedule:
   run_after_close_local: "17:30"
   weekdays_only: true
 
+memo:
+  # Pre-approval research memos — ADVISORY ONLY, never in the trade path.
+  # Configure an external OpenAI-compatible endpoint for frontier-quality
+  # analysis (key via the env var below); empty falls back to local Ollama.
+  enabled: true
+  base_url: ""            # e.g. https://api.anthropic.com/v1
+  api_key_env: MEMO_LLM_API_KEY
+  model: ""               # e.g. claude-sonnet-4-6
+  timeout_seconds: 120
+
 execution:
   # local = internal simulated fills (default). alpaca_paper = route approved
   # orders to Alpaca's PAPER endpoint (keys via ALPACA_API_KEY_ID /

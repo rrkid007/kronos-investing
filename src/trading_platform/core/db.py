@@ -10,11 +10,12 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 # Version 1: full base schema. Version 2: broker routing columns (phase 13).
 # Version 3: discovery — candidate universe + watchlist suggestions (phase 14).
 # Version 4: macro indicator series cache (phase 15).
+# Version 5: pre-approval research memos (phase 16).
 MIGRATIONS: dict[int, str] = {
     1: """
     CREATE TABLE runs (
@@ -195,6 +196,17 @@ MIGRATIONS: dict[int, str] = {
         value      REAL NOT NULL,
         fetched_at TEXT NOT NULL,
         PRIMARY KEY (series, date)
+    );
+    """,
+    5: """
+    CREATE TABLE research_memos (
+        order_id       TEXT PRIMARY KEY REFERENCES orders(order_id),
+        ticker         TEXT NOT NULL,
+        run_id         TEXT NOT NULL,
+        created_at     TEXT NOT NULL,
+        model          TEXT NOT NULL,
+        recommendation TEXT NOT NULL,
+        memo_md        TEXT NOT NULL
     );
     """,
 }

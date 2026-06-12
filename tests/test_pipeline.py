@@ -207,8 +207,8 @@ def test_rerunning_same_date_does_not_duplicate(tmp_config, fake_market_data):
     n_runs = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
     assert n_runs == 2
     # per ticker: 5 agents + market_data + decision; plus run-level
-    # execution + macro + portfolio + risk + orders + snapshot
-    per_run = len(tmp_config.watchlist.symbols) * (len(AGENT_STAGES) + 2) + 6
+    # execution + macro + portfolio + risk + orders + memos + snapshot
+    per_run = len(tmp_config.watchlist.symbols) * (len(AGENT_STAGES) + 2) + 7
     for rid in (run_id_1, run_id_2):
         n = conn.execute(
             "SELECT COUNT(*) FROM run_stages WHERE run_id = ?", (rid,)
@@ -524,6 +524,65 @@ def test_failure_notification_sent_on_crash(tmp_config, fake_market_data, monkey
 
     assert "FAILED" in sent["title"]
     assert "resumable" in sent["message"]
+
+
+def test_memo_attached_to_pending_order(tmp_config, fake_market_data, monkeypatch):
+    """A pending order (forced stop-loss sell) gets an advisory memo."""
+    from tests.fixtures import FakeLLM
+    from tests.test_memo import canned_memo
+
+    monkeypatch.setattr(
+        "trading_platform.research.memo.build_memo_client",
+        lambda config: FakeLLM(response=canned_memo(recommendation="needs_review")),
+    )
+    conn = connect(tmp_config.db_path)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO positions (ticker, qty, avg_cost, opened_at, updated_at) "
+        "VALUES ('AAPL', 10, 1000.0, '2026-06-05', '2026-06-05')",
+    )  # deep underwater -> stop-loss sell order awaiting approval
+    conn.commit()
+    conn.close()
+
+    run_id = run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
+
+    conn = connect(tmp_config.db_path)
+    memo = conn.execute(
+        "SELECT m.* FROM research_memos m JOIN orders o ON m.order_id = o.order_id "
+        "WHERE o.run_id = ? AND o.ticker = 'AAPL'", (run_id,),
+    ).fetchone()
+    stage = conn.execute(
+        "SELECT detail FROM run_stages WHERE run_id = ? AND stage = 'memos'", (run_id,),
+    ).fetchone()
+    conn.close()
+
+    assert memo is not None
+    assert memo["recommendation"] == "needs_review"
+    assert "Kill criteria" in memo["memo_md"]
+    assert "1 memo(s) generated" in stage["detail"]
+
+
+def test_memo_failure_never_blocks_queue(tmp_config, fake_market_data):
+    """Dead memo LLM (autouse fixture kills Ollama): orders still queue."""
+    conn = connect(tmp_config.db_path)
+    init_db(conn)
+    conn.execute(
+        "INSERT INTO positions (ticker, qty, avg_cost, opened_at, updated_at) "
+        "VALUES ('AAPL', 10, 1000.0, '2026-06-05', '2026-06-05')",
+    )
+    conn.commit()
+    conn.close()
+
+    run_id = run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
+
+    conn = connect(tmp_config.db_path)
+    order = conn.execute(
+        "SELECT status FROM orders WHERE run_id = ? AND ticker = 'AAPL'", (run_id,)
+    ).fetchone()
+    n_memos = conn.execute("SELECT COUNT(*) FROM research_memos").fetchone()[0]
+    conn.close()
+    assert order["status"] == "awaiting_approval"  # queue intact
+    assert n_memos == 0
 
 
 def test_unapproved_order_expires_at_next_run(tmp_config, fake_market_data):

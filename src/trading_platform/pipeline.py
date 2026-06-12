@@ -77,6 +77,7 @@ RISK_STAGE = "risk"
 EXECUTION_STAGE = "execution"
 MACRO_STAGE = "macro"
 ORDERS_STAGE = "orders"
+MEMOS_STAGE = "memos"
 SNAPSHOT_STAGE = "snapshot"
 
 
@@ -192,6 +193,13 @@ def run_daily(
         n_orders = _submit_orders(conn, config, run_id, run_date, decisions, frames)
         mark_stage(conn, run_id, ORDERS_STAGE, "completed",
                    detail=f"{n_orders} order(s) submitted")
+
+        # --- pass 5.5: advisory research memos for the approval queue.
+        # Failures degrade to "no memo", never a blocked order.
+        mark_stage(conn, run_id, MEMOS_STAGE, "running")
+        n_memos = _generate_memos(conn, config, run_id)
+        mark_stage(conn, run_id, MEMOS_STAGE, "completed",
+                   detail=f"{n_memos} memo(s) generated")
 
         # --- pass 6: mark-to-market snapshot + benchmark series upkeep
         mark_stage(conn, run_id, SNAPSHOT_STAGE, "running")
@@ -387,6 +395,27 @@ def _submit_orders(conn, config, run_id, run_date, decisions, frames) -> int:
         )
         submitted += 1
     return submitted
+
+
+def _generate_memos(conn, config, run_id) -> int:
+    """Advisory memos for this run's orders awaiting approval."""
+    if not config.settings.memo.enabled:
+        return 0
+    pending = conn.execute(
+        "SELECT * FROM orders WHERE run_id = ? AND status = 'awaiting_approval'",
+        (run_id,),
+    ).fetchall()
+    if not pending:
+        return 0
+
+    from trading_platform.research.memo import build_memo_client, generate_memo
+
+    client = build_memo_client(config)
+    generated = 0
+    for order in pending:
+        if generate_memo(conn, config, order, client=client) is not None:
+            generated += 1
+    return generated
 
 
 def _risk_pass(conn, config, run_id, decisions, frames, positions, held_by_ticker) -> int:

@@ -24,6 +24,22 @@
                 hx-confirm="Reject {{ o.side }} {{ o.ticker }} x{{ o.qty }}?">Reject</button>
       </td>
     </tr>
+    {% if o.memo_md %}
+    <tr>
+      <td colspan="8" style="padding:0 8px 10px">
+        <details>
+          <summary class="dim" style="cursor:pointer">
+            research memo — analyst recommendation:
+            <span class="{{ 'up' if o.memo_recommendation == 'approve'
+                            else 'down' if o.memo_recommendation == 'reject' else '' }}">
+              {{ o.memo_recommendation }}</span> (advisory only)
+          </summary>
+          <pre style="white-space:pre-wrap;font-size:12px;color:var(--ink);
+                      background:var(--panel-2);padding:12px;margin:6px 0 0">{{ o.memo_md }}</pre>
+        </details>
+      </td>
+    </tr>
+    {% endif %}
     {% endfor %}
   </table>
   <div class="dim" style="font-size:11px;margin-top:6px">
