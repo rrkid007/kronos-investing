@@ -61,6 +61,22 @@ class DashboardSettings(BaseModel):
     port: int = 8420
 
 
+class MacroSettings(BaseModel):
+    enabled: bool = True
+    # Component thresholds (points 0/1/2 each):
+    vix_elevated: float = 20.0
+    vix_stress: float = 30.0
+    hy_oas_elevated: float = 4.0   # high-yield option-adjusted spread, %
+    hy_oas_stress: float = 6.0
+    curve_flat: float = 0.5        # 10Y-2Y spread, %; below -> flattening
+    curve_inverted: float = 0.0    # below -> inverted
+    # New-position sizing multiplier per regime. Exits are never scaled.
+    sizing_scalars: dict[str, float] = Field(default_factory=lambda: {
+        "calm": 1.0, "caution": 0.75, "stress": 0.5, "unknown": 1.0,
+    })
+    max_staleness_days: int = 7    # cached indicator values older than this are ignored
+
+
 class DiscoverySettings(BaseModel):
     max_candidates: int = 60        # universe members screened per run (rotates)
     top_n: int = 5                  # suggestions surfaced per batch
@@ -94,6 +110,7 @@ class Settings(BaseModel):
     dashboard: DashboardSettings = DashboardSettings()
     execution: ExecutionSettings = ExecutionSettings()
     discovery: DiscoverySettings = DiscoverySettings()
+    macro: MacroSettings = MacroSettings()
 
 
 class WatchlistEntry(BaseModel):

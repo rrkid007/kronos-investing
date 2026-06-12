@@ -318,6 +318,8 @@ def write_backtest_report(
         f"${config.risk.fill_model.commission_per_trade} commission.",
         "- Account math on raw closes (no dividends); benchmarks use adjusted",
         "  closes — the comparison flatters the benchmark.",
+        "- No macro-regime sizing in replay (live runs scale new positions by",
+        "  regime; replaying that would require point-in-time macro data).",
         "",
         "## Results",
         "",

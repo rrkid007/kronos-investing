@@ -49,7 +49,9 @@ from trading_platform.core.runs import (
     stage_status,
 )
 from trading_platform.data.market_data import MarketDataService
+from trading_platform.data.macro import refresh_macro
 from trading_platform.execution.account import load_cash, load_positions
+from trading_platform.risk.regime import RegimeAssessment, classify_regime
 from trading_platform.execution.orders import (
     expire_stale_orders,
     fillable_orders,
@@ -73,6 +75,7 @@ DECISION_STAGE = "decision"
 PORTFOLIO_STAGE = "portfolio"
 RISK_STAGE = "risk"
 EXECUTION_STAGE = "execution"
+MACRO_STAGE = "macro"
 ORDERS_STAGE = "orders"
 SNAPSHOT_STAGE = "snapshot"
 
@@ -130,6 +133,12 @@ def run_daily(
         mark_stage(conn, run_id, EXECUTION_STAGE, "completed",
                    detail=f"{n_filled} filled, {n_expired} expired")
 
+        # --- pass 0.5: macro regime — scales new-position sizing (phase 15).
+        # A failed read degrades to "unknown" with neutral scaling, never a crash.
+        mark_stage(conn, run_id, MACRO_STAGE, "running")
+        regime = _assess_regime(conn, config, as_of)
+        mark_stage(conn, run_id, MACRO_STAGE, "completed", detail=regime.summary())
+
         positions = load_positions(conn)  # post-fill view
         held_by_ticker = {p.ticker: p for p in positions}
         # Held tickers are always re-evaluated, even off-watchlist (exit policy).
@@ -166,7 +175,8 @@ def run_daily(
 
         # --- pass 3: portfolio sizing for buys, strongest first
         mark_stage(conn, run_id, PORTFOLIO_STAGE, "running")
-        n_approved = _assess_buys(conn, config, decisions, frames, positions)
+        n_approved = _assess_buys(conn, config, decisions, frames, positions,
+                                  regime_scalar=regime.sizing_scalar)
         mark_stage(conn, run_id, PORTFOLIO_STAGE, "completed",
                    detail=f"{n_approved} buy(s) sized and approved")
 
@@ -192,7 +202,7 @@ def run_daily(
                    detail=f"equity {summary['equity']:,.0f}")
 
         duration = time.perf_counter() - started
-        _write_report(conn, config, run_id, run_date, skipped, duration)
+        _write_report(conn, config, run_id, run_date, skipped, duration, regime)
         complete_run(conn, run_id)
         logger.info("run %s completed (%d tickers skipped)", run_id, len(skipped))
         notify(
@@ -262,7 +272,23 @@ def _portfolio_state(conn, config, frames, positions) -> PortfolioState:
     )
 
 
-def _assess_buys(conn, config, decisions, frames, positions) -> int:
+def _assess_regime(conn, config, as_of) -> RegimeAssessment:
+    if not config.settings.macro.enabled:
+        return RegimeAssessment(regime="unknown", sizing_scalar=1.0)
+    try:
+        snapshot = refresh_macro(
+            conn, as_of=as_of,
+            max_staleness_days=config.settings.macro.max_staleness_days,
+        )
+        return classify_regime(snapshot, config.settings.macro)
+    except Exception as exc:  # macro context must never kill a trading run
+        logger.exception("macro regime assessment failed")
+        assessment = RegimeAssessment(regime="unknown", sizing_scalar=1.0)
+        assessment.as_of = {"error": str(exc)[:120]}
+        return assessment
+
+
+def _assess_buys(conn, config, decisions, frames, positions, regime_scalar=1.0) -> int:
     """Rank buys by final score and size them against a running state."""
     state = _portfolio_state(conn, config, frames, positions)
     agent = PortfolioAgent(config.risk, config.watchlist)
@@ -275,7 +301,8 @@ def _assess_buys(conn, config, decisions, frames, positions) -> int:
     for decision in buys:
         df = frames.get(decision.ticker)
         price = float(df["close"].iloc[-1]) if df is not None else None
-        assessment = agent.assess_buy(decision, price, df, state)
+        assessment = agent.assess_buy(decision, price, df, state,
+                                      regime_scalar=regime_scalar)
         decision.signal_breakdown["portfolio"] = assessment.model_dump()
         decision.sizing_hint = assessment.target_value if assessment.approved else None
         if assessment.approved:
@@ -566,6 +593,7 @@ def _persist_agent_outcome(conn, run_id, stage, symbol, future) -> None:
 def _write_report(
     conn, config: AppConfig, run_id: str, run_date: str,
     skipped: dict[str, str], duration: float = 0.0,
+    regime: RegimeAssessment | None = None,
 ) -> Path:
     report_dir = config.reports_dir / "daily"
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -581,6 +609,11 @@ def _write_report(
     ]
 
     import json as _json
+
+    if regime is not None:
+        lines += ["## Macro Regime", "", f"**{regime.summary()}**", ""]
+        lines += [f"- {c.detail} → {c.points} pt(s)" for c in regime.components]
+        lines += [""]
 
     snap = conn.execute(
         "SELECT * FROM account_snapshots WHERE snapshot_date = ?", (run_date,)
@@ -730,13 +763,14 @@ def _write_report(
     lines += [""]
     path.write_text("\n".join(lines), encoding="utf-8")
 
-    _write_json_report(conn, config, run_id, run_date, skipped, duration, perf)
+    _write_json_report(conn, config, run_id, run_date, skipped, duration, perf, regime)
     return path
 
 
 def _write_json_report(
     conn, config: AppConfig, run_id: str, run_date: str,
     skipped: dict[str, str], duration: float, perf: dict,
+    regime: RegimeAssessment | None = None,
 ) -> Path:
     """Machine-readable twin of the markdown report (dashboard, tooling)."""
     import json as _json
@@ -766,6 +800,7 @@ def _write_json_report(
         "run_id": run_id,
         "run_date": run_date,
         "duration_seconds": round(duration, 1),
+        "macro_regime": regime.model_dump() if regime else None,
         "account": dict(snapshot) if snapshot else None,
         "decisions": decisions,
         "agent_scores": scores,

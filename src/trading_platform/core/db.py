@@ -10,10 +10,11 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Version 1: full base schema. Version 2: broker routing columns (phase 13).
 # Version 3: discovery — candidate universe + watchlist suggestions (phase 14).
+# Version 4: macro indicator series cache (phase 15).
 MIGRATIONS: dict[int, str] = {
     1: """
     CREATE TABLE runs (
@@ -186,6 +187,15 @@ MIGRATIONS: dict[int, str] = {
                           CHECK (status IN ('suggested','added','dismissed'))
     );
     CREATE INDEX idx_suggestions_batch ON watchlist_suggestions(batch_id);
+    """,
+    4: """
+    CREATE TABLE macro_indicators (
+        series     TEXT NOT NULL,
+        date       TEXT NOT NULL,
+        value      REAL NOT NULL,
+        fetched_at TEXT NOT NULL,
+        PRIMARY KEY (series, date)
+    );
     """,
 }
 

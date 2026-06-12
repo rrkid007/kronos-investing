@@ -87,6 +87,7 @@ class PortfolioAgent:
         price: float,
         df: pd.DataFrame,
         state: PortfolioState,
+        regime_scalar: float = 1.0,
     ) -> PortfolioAssessment:
         ticker = decision.ticker
         sizing = self.risk.sizing
@@ -111,13 +112,16 @@ class PortfolioAgent:
         score_scalar = _clamp(0.75 + (decision.final_score - 70.0) / 30.0 * 0.5, 0.5, 1.25)
         vol = realized_vol(df)
         vol_scalar = _clamp(sizing.target_vol / vol, 0.5, 1.5) if vol > 0 else 1.0
-        target = base * score_scalar * vol_scalar
+        target = base * score_scalar * vol_scalar * regime_scalar
         checks.append(
             f"base {base:.0f} x score_scalar {score_scalar:.2f} "
-            f"x vol_scalar {vol_scalar:.2f} (vol {vol:.2f}) = {target:.0f}"
+            f"x vol_scalar {vol_scalar:.2f} (vol {vol:.2f}) "
+            f"x regime_scalar {regime_scalar:.2f} = {target:.0f}"
         )
         if vol_scalar < 0.75:
             fit -= 10  # high-volatility name, size already cut
+        if regime_scalar < 1.0:
+            checks.append(f"macro regime scaling new positions by {regime_scalar:.2f}")
 
         # --- single-position cap
         cap = state.equity * self.risk.max_position_pct / 100

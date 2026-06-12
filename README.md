@@ -192,4 +192,15 @@ Everything tunable lives in `config/` (validated at startup — bad config fails
   vs GICS "Information Technology") that was mis-awarding gap bonuses.
   `uv run python scripts/discover_stocks.py`
 
-**All planned phases (0–14) are complete.** See [PLAN.md](PLAN.md) §3 for the roadmap.
+- **Phase 15 (Macro Regime Agent)** — complete: deterministic macro context
+  from FRED's keyless CSV endpoints (10Y-2Y spread, VIX, high-yield OAS),
+  cached in `macro_indicators` with stale-tolerant fallback. Each dial scores
+  0/1/2 against config thresholds; the stress ratio maps to a regime — calm
+  ×1.0 / caution ×0.75 / stress ×0.5 on NEW position sizing only (exits are
+  never scaled, and fewer than two live dials means "unknown" with neutral
+  ×1.0 — a blind macro read must not move sizes). Surfaced in the report,
+  JSON, run stages, and the sizing audit trail. Backtests deliberately skip
+  regime scaling (would require point-in-time macro data — stated in the
+  assumptions).
+
+**All planned phases (0–15) are complete.** See [PLAN.md](PLAN.md) §3 for the roadmap.

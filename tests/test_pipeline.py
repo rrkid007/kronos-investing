@@ -23,6 +23,19 @@ def canned_fundamentals(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def canned_macro(monkeypatch):
+    """Pipeline tests never hit FRED — calm regime by default."""
+    from trading_platform.data.macro import MacroSnapshot
+
+    monkeypatch.setattr(
+        "trading_platform.pipeline.refresh_macro",
+        lambda conn, as_of=None, max_staleness_days=7: MacroSnapshot(
+            yield_curve=1.0, vix=15.0, hy_oas=3.0, as_of={"vix": "2026-06-10"},
+        ),
+    )
+
+
+@pytest.fixture(autouse=True)
 def canned_kronos(monkeypatch):
     """Pipeline tests never load the Kronos model — canned upward paths."""
     from trading_platform.agents.kronos import KronosAgent
@@ -194,8 +207,8 @@ def test_rerunning_same_date_does_not_duplicate(tmp_config, fake_market_data):
     n_runs = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
     assert n_runs == 2
     # per ticker: 5 agents + market_data + decision; plus run-level
-    # execution + portfolio + risk + orders + snapshot
-    per_run = len(tmp_config.watchlist.symbols) * (len(AGENT_STAGES) + 2) + 5
+    # execution + macro + portfolio + risk + orders + snapshot
+    per_run = len(tmp_config.watchlist.symbols) * (len(AGENT_STAGES) + 2) + 6
     for rid in (run_id_1, run_id_2):
         n = conn.execute(
             "SELECT COUNT(*) FROM run_stages WHERE run_id = ?", (rid,)
@@ -422,6 +435,51 @@ def test_full_cycle_through_pipeline(tmp_config, fake_market_data):
     ).fetchone()
     assert snap["equity"] == pytest.approx(account["cash"])  # all cash again
     conn.close()
+
+
+def test_macro_regime_in_report_and_stage(tmp_config, fake_market_data):
+    run_id = run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
+
+    conn = connect(tmp_config.db_path)
+    stage = conn.execute(
+        "SELECT status, detail FROM run_stages WHERE run_id = ? AND stage = 'macro'",
+        (run_id,),
+    ).fetchone()
+    conn.close()
+    assert stage["status"] == "completed"
+    assert "calm" in stage["detail"]
+
+    report_text = (tmp_config.reports_dir / "daily" / "2026-06-11.md").read_text(encoding="utf-8")
+    assert "## Macro Regime" in report_text
+    assert "calm" in report_text
+
+    import json
+    payload = json.loads(
+        (tmp_config.reports_dir / "daily" / "2026-06-11.json").read_text(encoding="utf-8")
+    )
+    assert payload["macro_regime"]["regime"] == "calm"
+    assert payload["macro_regime"]["sizing_scalar"] == 1.0
+
+
+def test_macro_failure_degrades_to_unknown_not_crash(tmp_config, fake_market_data,
+                                                     monkeypatch):
+    def boom(conn, as_of=None, max_staleness_days=7):
+        raise ConnectionError("fred unreachable")
+
+    monkeypatch.setattr("trading_platform.pipeline.refresh_macro", boom)
+    run_id = run_daily(tmp_config, run_date="2026-06-11", market_data=fake_market_data)
+
+    conn = connect(tmp_config.db_path)
+    assert conn.execute(
+        "SELECT status FROM runs WHERE run_id = ?", (run_id,)
+    ).fetchone()[0] == "completed"  # the run survived
+    stage = conn.execute(
+        "SELECT detail FROM run_stages WHERE run_id = ? AND stage = 'macro'",
+        (run_id,),
+    ).fetchone()
+    conn.close()
+    assert "unknown" in stage["detail"]
+    assert "unscaled" in stage["detail"]  # neutral sizing, not a guess
 
 
 def test_report_includes_run_health(tmp_config, fake_market_data):
