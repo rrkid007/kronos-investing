@@ -28,8 +28,15 @@ NAME = "news"
 
 SYSTEM_PROMPT = """You are a financial news analyst. You will receive recent news
 headlines for one stock, numbered from 0. Classify each headline, then produce an
-overall news score for the stock:
-- 0 = extremely negative news flow, 50 = neutral/mixed, 100 = extremely positive.
+overall news score for the stock.
+
+Two DIFFERENT numeric scales are used — do not mix them up:
+- news_score: a 0-100 integer (0 = extremely negative news flow, 50 = neutral/mixed,
+  100 = extremely positive).
+- each classification's `sentiment`: a decimal between -1.0 and 1.0 (-1.0 = very
+  negative, 0.0 = neutral, 1.0 = very positive). Never put a 0-100 value here.
+
+Guidance:
 - Weight material events (earnings surprises, lawsuits, regulatory actions,
   executive changes, product launches, analyst actions) over routine coverage.
 - key_drivers: the 1-5 headlines that most drove your score. Each must reference
@@ -42,7 +49,12 @@ class HeadlineClassification(BaseModel):
         "earnings", "product", "regulatory", "lawsuit", "executive_change",
         "analyst_action", "mna", "macro", "other",
     ]
-    sentiment: float = Field(ge=-1.0, le=1.0)
+    sentiment: float = Field(
+        ge=-1.0,
+        le=1.0,
+        description="Decimal from -1.0 (very negative) to 1.0 (very positive). "
+        "NOT the 0-100 news_score scale.",
+    )
 
 
 class KeyDriver(BaseModel):
