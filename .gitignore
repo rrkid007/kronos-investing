@@ -7,10 +7,10 @@ __pycache__/
 .ruff_cache/
 
 # Runtime artifacts
-db/
-reports/
-data/
-logs/
+/db/
+/reports/
+/data/
+/logs/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
