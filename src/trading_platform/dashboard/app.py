@@ -4,9 +4,9 @@ Read-only against SQLite except for: the approval actions (approve/reject),
 watchlist discovery suggestions (approve/dismiss), the Settings page (which
 writes validated edits back to the config YAML via core.config_writer),
 watchlist edits, API-key/credentials storage (core.secrets, written to a
-gitignored .env — never the YAML), and the in-app scheduler controls. Binds
-127.0.0.1 by default; there is no auth layer, so don't expose it beyond
-localhost.
+gitignored .env — never the YAML), the paper-account reset, and the in-app
+scheduler controls. Binds 127.0.0.1 by default; there is no auth layer, so
+don't expose it beyond localhost.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ from trading_platform.dashboard.settings_schema import build_schema, coerce, coe
 from trading_platform.discovery.suggestions import approve_suggestion, dismiss_suggestion
 from trading_platform.execution.approval import approve_and_submit
 from trading_platform.execution.orders import reject_order
+from trading_platform.execution.paper_broker import reset_account
 from trading_platform.pipeline import AGENT_STAGES
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -121,6 +122,15 @@ def create_app(
     def approvals_context(conn) -> dict:
         return {"pending": queries.pending_orders(conn),
                 "recent": queries.recent_order_activity(conn)}
+
+    def paper_status() -> dict:
+        conn = db()
+        try:
+            row = conn.execute("SELECT cash FROM account WHERE id = 1").fetchone()
+            return {"cash": (row["cash"] if row else None),
+                    "starting_cash": cfg().risk.paper_account.starting_cash}
+        finally:
+            conn.close()
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
@@ -223,6 +233,7 @@ def create_app(
             "schema": build_schema(cfg()),
             "watchlist": cfg().watchlist.tickers,
             "secrets": secrets_descriptor(cfg()),
+            "paper": paper_status(),
             "schedule_status": scheduler.status(),
             "flash": flash,
             "flash_ok": flash_ok,
@@ -280,6 +291,18 @@ def create_app(
             return _settings_partial(request, f"{env_name} {action}", True)
         except Exception as exc:
             return _settings_partial(request, str(exc), False)
+
+    @app.post("/paper/reset", response_class=HTMLResponse)
+    def paper_reset(request: Request):
+        conn = db()
+        try:
+            cash = cfg().risk.paper_account.starting_cash
+            reset_account(conn, cash)
+            return _settings_partial(request, f"paper account reset to ${cash:,.2f}", True)
+        except Exception as exc:
+            return _settings_partial(request, f"reset failed: {exc}", False)
+        finally:
+            conn.close()
 
     @app.post("/watchlist/add", response_class=HTMLResponse)
     async def watchlist_add(request: Request):

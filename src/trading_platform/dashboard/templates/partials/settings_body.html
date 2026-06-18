@@ -52,6 +52,18 @@
     </form>
   </div>
 
+  <div class="card span6" id="paper-account">
+    <h2>Paper Account <span class="dim">— local ledger</span></h2>
+    <p class="section-note"><code>starting_cash</code> only seeds a brand-new account, so changing it doesn't move an existing balance.
+      Reset re-seeds cash to the configured value and clears positions, orders, and equity history (research runs are kept).</p>
+    <p>Current cash: <strong>{% if paper.cash is not none %}${{ "{:,.2f}".format(paper.cash) }}{% else %}—{% endif %}</strong>
+       <span class="dim">· configured start ${{ "{:,.2f}".format(paper.starting_cash) }}</span></p>
+    <form hx-post="/paper/reset" hx-target="#settings-root" hx-swap="outerHTML"
+          hx-confirm="Reset the paper account to ${{ '{:,.2f}'.format(paper.starting_cash) }}? This clears all positions, orders, and equity history.">
+      <button class="reject" type="submit">Reset paper account</button>
+    </form>
+  </div>
+
   <div class="card span12">
     <h2>Credentials <span class="dim">— API keys</span></h2>
     <p class="section-note">Stored in a local <code>.env</code> file (chmod 600), never in the git-tracked config and never shown back here.

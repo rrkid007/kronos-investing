@@ -32,6 +32,31 @@ def get_account(conn: sqlite3.Connection) -> sqlite3.Row:
     return conn.execute("SELECT * FROM account WHERE id = 1").fetchone()
 
 
+def reset_account(conn: sqlite3.Connection, starting_cash: float) -> None:
+    """Wipe the paper-trading ledger and re-seed cash to ``starting_cash``.
+
+    Clears fills, research memos, orders, positions and equity snapshots
+    (children before parents, so the foreign keys stay satisfied), then resets
+    the single account row. Research history — runs, agent scores, decisions,
+    risk events — is deliberately preserved. Use this to apply a changed
+    ``paper_account.starting_cash`` (which otherwise only seeds a brand-new
+    account)."""
+    for stmt in (
+        "DELETE FROM fills",
+        "DELETE FROM research_memos",
+        "DELETE FROM orders",
+        "DELETE FROM positions",
+        "DELETE FROM account_snapshots",
+        "DELETE FROM account",
+    ):
+        conn.execute(stmt)
+    conn.execute(
+        "INSERT INTO account (id, cash, realized_pnl, updated_at) VALUES (1, ?, 0, ?)",
+        (starting_cash, utcnow().isoformat()),
+    )
+    conn.commit()
+
+
 class FillError(RuntimeError):
     """A fill that must not proceed (e.g. selling an absent position)."""
 
