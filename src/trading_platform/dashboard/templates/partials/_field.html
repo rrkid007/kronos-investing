@@ -1,0 +1,23 @@
+{% macro render_field(f) %}
+<div class="field{% if f.kind in ['list','map'] %} full{% endif %}">
+  <label>{{ f.label }} <span class="path">{{ f.path }}</span></label>
+  {% if f.kind == 'bool' %}
+    <select name="{{ f.path }}">
+      <option value="true"{% if f.value == 'true' %} selected{% endif %}>true</option>
+      <option value="false"{% if f.value == 'false' %} selected{% endif %}>false</option>
+    </select>
+  {% elif f.kind == 'choice' %}
+    <select name="{{ f.path }}">
+      {% for c in f.choices %}<option value="{{ c }}"{% if c == f.value %} selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+  {% elif f.kind == 'list' %}
+    <textarea name="{{ f.path }}" rows="3" placeholder="one item per line">{{ f.value }}</textarea>
+  {% elif f.kind == 'map' %}
+    <textarea name="{{ f.path }}" rows="3" placeholder="key: value (one per line)">{{ f.value }}</textarea>
+  {% elif f.kind in ['int', 'float'] %}
+    <input type="number" step="{% if f.kind == 'int' %}1{% else %}any{% endif %}" name="{{ f.path }}" value="{{ f.value }}">
+  {% else %}
+    <input type="text" name="{{ f.path }}" value="{{ f.value }}">
+  {% endif %}
+</div>
+{% endmacro %}

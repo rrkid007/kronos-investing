@@ -13,6 +13,9 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.30",
     "jinja2>=3.1",
+    "python-multipart>=0.0.9",  # dashboard settings form posts
+    "ruamel.yaml>=0.18",        # comment-preserving config writes
+    "apscheduler>=3.10",        # in-app job scheduler
     "lxml>=5.0",  # pandas.read_html (S&P 500 universe)
 ]
 

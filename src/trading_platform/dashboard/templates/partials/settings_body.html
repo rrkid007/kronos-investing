@@ -1,0 +1,74 @@
+{% from "partials/_field.html" import render_field %}
+<div id="settings-root">
+{% if flash %}<div class="flash {{ 'ok' if flash_ok else 'err' }}">{{ flash }}</div>{% endif %}
+
+<div class="grid">
+
+  <div class="card span6">
+    <div class="section-head"><h2>Scheduler</h2>
+      {% if schedule_status.enabled %}<span class="pill on">enabled</span>{% else %}<span class="pill off">disabled</span>{% endif %}
+      <span class="dim">tz {{ schedule_status.timezone }}</span>
+    </div>
+    <p class="section-note">In-app scheduler — fires while this dashboard process is running.
+      Toggle it and set times in <strong>Platform Settings → Schedule</strong> below.</p>
+    {% for jid, j in schedule_status.jobs.items() %}
+      <div class="sched-job">
+        <strong>{{ jid }}</strong>
+        {% if j.running %}<span class="pill on">running</span>
+        {% elif j.scheduled %}<span class="pill on">scheduled</span>
+        {% else %}<span class="pill off">idle</span>{% endif %}
+        <button class="ghost" hx-post="/run/{{ jid }}" hx-target="#settings-root" hx-swap="outerHTML">Run now</button>
+        <div class="dim">next run: {{ j.next_run or '—' }}</div>
+        {% if j.last %}<div class="{{ 'up' if j.last.status == 'ok' else 'down' }}">last: {{ j.last.status }} @ {{ j.last.at }}{% if j.last.detail %} — {{ j.last.detail }}{% endif %}</div>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="card span6">
+    <h2>Watchlist</h2>
+    <table>
+      <thead><tr><th>Symbol</th><th>Sector</th><th class="num">Action</th></tr></thead>
+      <tbody>
+      {% for t in watchlist %}
+        <tr>
+          <td>{{ t.symbol }}</td>
+          <td>{{ t.sector }}</td>
+          <td class="num">
+            <form style="display:inline" hx-post="/watchlist/remove" hx-target="#settings-root" hx-swap="outerHTML">
+              <input type="hidden" name="symbol" value="{{ t.symbol }}">
+              <button class="reject" type="submit">remove</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="empty">watchlist is empty</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <form class="inline-form" style="margin-top:12px" hx-post="/watchlist/add" hx-target="#settings-root" hx-swap="outerHTML">
+      <div class="field"><label>Symbol</label><input name="symbol" placeholder="TSLA" autocomplete="off"></div>
+      <div class="field"><label>Sector</label><input name="sector" placeholder="Consumer Discretionary" autocomplete="off"></div>
+      <button class="save" type="submit">Add ticker</button>
+    </form>
+  </div>
+
+  {% for g in schema %}
+  <div class="card span12">
+    <h2>{{ g.title }} <span class="dim">— {{ g.file_key }}.yaml</span></h2>
+    {% for s in g.sections %}
+    <details class="cfg"{% if loop.first %} open{% endif %}>
+      <summary>{{ s.title }}</summary>
+      {% if s.note %}<p class="section-note">{{ s.note }}</p>{% endif %}
+      <form hx-post="/settings/{{ g.file_key }}" hx-target="#settings-root" hx-swap="outerHTML">
+        <div class="fieldgrid">
+          {% for f in s.fields %}{{ render_field(f) }}{% endfor %}
+        </div>
+        <button class="save" type="submit">Save</button>
+      </form>
+    </details>
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+</div>
+</div>

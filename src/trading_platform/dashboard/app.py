@@ -1,8 +1,10 @@
 """Dashboard — FastAPI + Jinja2 + HTMX, server-rendered, single user.
 
-Read-only against SQLite except the two approval actions (approve/reject),
-which delegate to execution.orders. Binds 127.0.0.1 by default; there is no
-auth layer, so don't expose it beyond localhost.
+Read-only against SQLite except for: the two approval actions
+(approve/reject), the Settings page (which writes validated edits back to the
+config YAML via core.config_writer), watchlist edits, and the in-app
+scheduler controls. Binds 127.0.0.1 by default; there is no auth layer, so
+don't expose it beyond localhost.
 """
 
 from __future__ import annotations
@@ -16,8 +18,11 @@ from fastapi.templating import Jinja2Templates
 
 from trading_platform.analytics.performance import performance_summary
 from trading_platform.core.config import AppConfig, load_config
+from trading_platform.core import config_writer
 from trading_platform.core.db import connect, init_db
 from trading_platform.dashboard import queries
+from trading_platform.dashboard.scheduler import RunScheduler
+from trading_platform.dashboard.settings_schema import build_schema, coerce, coercion_map
 from trading_platform.execution.approval import approve_and_submit
 from trading_platform.execution.orders import reject_order
 from trading_platform.pipeline import AGENT_STAGES
@@ -53,14 +58,32 @@ def equity_svg(points: list[tuple[str, float]], width: int = 900, height: int = 
 </svg>"""
 
 
-def create_app(config: AppConfig | None = None) -> FastAPI:
+def create_app(
+    config: AppConfig | None = None,
+    *,
+    scheduler: RunScheduler | None = None,
+    start_scheduler: bool = True,
+) -> FastAPI:
     config = config or load_config()
+    # Mutable holder so Settings edits can hot-swap the live config without a
+    # restart. Every route reads cfg() rather than closing over `config`.
+    state = {"config": config, "config_dir": config.root / "config"}
+
+    def cfg() -> AppConfig:
+        return state["config"]
+
     app = FastAPI(title="Investment Research Platform", docs_url=None, redoc_url=None)
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.globals["agent_stages"] = AGENT_STAGES
 
+    scheduler = scheduler or RunScheduler(get_config=cfg, autostart_scheduler=start_scheduler)
+    app.state.scheduler = scheduler
+    app.state.get_config = cfg
+    if start_scheduler:
+        scheduler.start()
+
     def db() -> sqlite3.Connection:
-        conn = connect(config.db_path)
+        conn = connect(cfg().db_path)
         init_db(conn)
         return conn
 
@@ -81,7 +104,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
                 "account": queries.account_overview(conn),
                 "equity_svg": equity_svg(points),
                 "equity_points": points,
-                "performance": performance_summary(conn, config.settings.benchmarks),
+                "performance": performance_summary(conn, cfg().settings.benchmarks),
                 "decisions": queries.decisions_for_run(conn, run_id) if run_id else [],
                 "leaderboard": queries.leaderboard(conn, run_id) if run_id else [],
                 "health": queries.run_health(conn, run_id) if run_id else None,
@@ -120,23 +143,100 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
     @app.post("/orders/{order_id}/approve", response_class=HTMLResponse)
     def approve(request: Request, order_id: str):
         return _decide(request, order_id,
-                       lambda conn, oid: approve_and_submit(conn, config, oid))
+                       lambda conn, oid: approve_and_submit(conn, cfg(), oid))
 
     @app.post("/orders/{order_id}/reject", response_class=HTMLResponse)
     def reject(request: Request, order_id: str):
         return _decide(request, order_id, reject_order)
 
+    # ----- Settings (writable) --------------------------------------------
+    def settings_context(flash: str | None = None, flash_ok: bool = True) -> dict:
+        return {
+            "schema": build_schema(cfg()),
+            "watchlist": cfg().watchlist.tickers,
+            "schedule_status": scheduler.status(),
+            "flash": flash,
+            "flash_ok": flash_ok,
+        }
+
+    def _settings_partial(request: Request, flash: str | None, ok: bool) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request, "partials/settings_body.html",
+            {"request": request, **settings_context(flash, ok)},
+        )
+
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings_page(request: Request):
+        return templates.TemplateResponse(
+            request, "settings.html", {"request": request, **settings_context()}
+        )
+
+    @app.post("/settings/{file_key}", response_class=HTMLResponse)
+    async def save_settings(request: Request, file_key: str):
+        if file_key not in ("settings", "weights", "risk"):
+            return _settings_partial(request, f"unknown section: {file_key}", False)
+        form = await request.form()
+        index = coercion_map(cfg()).get(file_key, {})
+        updates: dict = {}
+        errors: list[str] = []
+        for path, field in index.items():
+            if path in form:
+                try:
+                    updates[path] = coerce(field, form[path])
+                except Exception as exc:  # bad number, etc.
+                    errors.append(f"{field.label}: {exc}")
+        if errors:
+            return _settings_partial(request, "  ·  ".join(errors), False)
+        if not updates:
+            return _settings_partial(request, "no changes submitted", False)
+        try:
+            state["config"] = config_writer.apply_edits(state["config_dir"], file_key, updates)
+            if file_key == "settings":
+                scheduler.reschedule()
+            return _settings_partial(request, f"{file_key} saved", True)
+        except Exception as exc:  # pydantic validation, etc. — file already rolled back
+            return _settings_partial(request, f"rejected: {exc}", False)
+
+    @app.post("/watchlist/add", response_class=HTMLResponse)
+    async def watchlist_add(request: Request):
+        form = await request.form()
+        symbol = str(form.get("symbol", "")).strip()
+        sector = str(form.get("sector", "")).strip()
+        try:
+            state["config"] = config_writer.add_ticker(state["config_dir"], symbol, sector)
+            return _settings_partial(request, f"added {symbol.upper()}", True)
+        except Exception as exc:
+            return _settings_partial(request, str(exc), False)
+
+    @app.post("/watchlist/remove", response_class=HTMLResponse)
+    async def watchlist_remove(request: Request):
+        form = await request.form()
+        symbol = str(form.get("symbol", "")).strip()
+        try:
+            state["config"] = config_writer.remove_ticker(state["config_dir"], symbol)
+            return _settings_partial(request, f"removed {symbol.upper()}", True)
+        except Exception as exc:
+            return _settings_partial(request, str(exc), False)
+
+    @app.post("/run/{which}", response_class=HTMLResponse)
+    def run_now(request: Request, which: str):
+        try:
+            status = scheduler.trigger(which)
+            return _settings_partial(request, f"{which}: {status}", True)
+        except Exception as exc:
+            return _settings_partial(request, str(exc), False)
+
     @app.get("/reports", response_class=HTMLResponse)
     def reports(request: Request):
         return templates.TemplateResponse(request, "reports.html", {
-            "dates": queries.list_report_dates(config.reports_dir),
+            "dates": queries.list_report_dates(cfg().reports_dir),
         })
 
     @app.get("/reports/{report_date}", response_class=PlainTextResponse)
     def report_view(report_date: str):
         # stem-only lookup prevents path traversal
         safe = "".join(c for c in report_date if c.isdigit() or c == "-")
-        path = config.reports_dir / "daily" / f"{safe}.md"
+        path = cfg().reports_dir / "daily" / f"{safe}.md"
         if not path.exists():
             return PlainTextResponse("report not found", status_code=404)
         return PlainTextResponse(path.read_text(encoding="utf-8"))

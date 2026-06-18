@@ -54,6 +54,12 @@ class NotificationSettings(BaseModel):
 class ScheduleSettings(BaseModel):
     run_after_close_local: str = "17:30"
     weekdays_only: bool = True
+    # In-app scheduler (APScheduler, runs while the dashboard process is up).
+    # Independent of the systemd timers used in the DGX deployment.
+    enabled: bool = False               # master switch for the in-app scheduler
+    discovery_enabled: bool = True      # also schedule weekly watchlist discovery
+    discovery_day: str = "sat"          # cron day-of-week (mon..sun / mon-fri / *)
+    discovery_time: str = "09:00"       # local HH:MM for the discovery run
 
 
 class DashboardSettings(BaseModel):

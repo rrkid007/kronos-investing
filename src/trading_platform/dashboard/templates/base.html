@@ -102,10 +102,46 @@ button.reject:hover { background: var(--down); color: #160405; }
 
 .flash { border: 1px solid var(--amber); color: var(--amber); padding: 6px 10px;
   margin-bottom: 10px; font-size: 12px; }
+.flash.ok { border-color: var(--up); color: var(--up); }
+.flash.err { border-color: var(--down); color: var(--down); }
 .empty { color: var(--ink-dim); padding: 10px 0; }
 .chart svg { width: 100%; height: 180px; display: block; }
 .scorebar { display: inline-block; min-width: 38px; }
 a { color: var(--amber); }
+
+/* ----- settings form controls ----- */
+.fieldgrid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px 18px; }
+@media (max-width: 760px) { .fieldgrid { grid-template-columns: 1fr; } }
+.field { display: flex; flex-direction: column; gap: 3px; }
+.field.full { grid-column: 1 / -1; }
+.field label { color: var(--ink-dim); font-size: 10px; text-transform: uppercase;
+  letter-spacing: 1px; }
+.field .path { color: #34465a; font-size: 9.5px; letter-spacing: .5px; }
+input, select, textarea {
+  font: 400 12.5px "IBM Plex Mono", monospace; color: var(--ink);
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 2px;
+  padding: 5px 8px; width: 100%; font-variant-numeric: tabular-nums; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--amber); }
+textarea { resize: vertical; min-height: 56px; line-height: 1.5; }
+.section-note { color: var(--ink-dim); font-size: 11px; margin: 0 0 8px; }
+.section-head { display: flex; align-items: baseline; gap: 10px; }
+button.save { color: var(--amber); border: 1px solid var(--amber); margin-top: 10px; }
+button.save:hover { background: var(--amber); color: #1a1402; }
+button.ghost { color: var(--ink-dim); border: 1px solid var(--line); }
+button.ghost:hover { border-color: var(--amber); color: var(--amber); }
+.inline-form { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.sched-job { border: 1px solid var(--line); border-radius: 2px; padding: 8px 10px;
+  margin-bottom: 8px; }
+.pill { display: inline-block; padding: 0 7px; border: 1px solid var(--line);
+  border-radius: 2px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+.pill.on { color: var(--up); border-color: var(--up); }
+.pill.off { color: var(--ink-dim); }
+.pill.err { color: var(--down); border-color: var(--down); }
+details.cfg > summary { cursor: pointer; color: var(--amber); font-size: 11px;
+  letter-spacing: 2px; text-transform: uppercase; list-style: none; padding: 4px 0; }
+details.cfg > summary::-webkit-details-marker { display: none; }
+details.cfg > summary::before { content: "▸ "; }
+details.cfg[open] > summary::before { content: "▾ "; }
 footer { margin-top: 28px; color: var(--ink-dim); font-size: 11px;
   border-top: 1px solid var(--line); padding-top: 12px; }
 </style>
@@ -114,7 +150,7 @@ footer { margin-top: 28px; color: var(--ink-dim); font-size: 11px;
 <header class="masthead">
   <h1>Research Terminal</h1>
   <span class="sub">{% block subtitle %}paper trading · human approval required{% endblock %}</span>
-  <nav><a href="/">Dashboard</a><a href="/reports">Reports</a></nav>
+  <nav><a href="/">Dashboard</a><a href="/reports">Reports</a><a href="/settings">Settings</a></nav>
 </header>
 {% block content %}{% endblock %}
 <footer>local ai investment research platform — agents analyze · risk engine controls · human approves · broker executes</footer>

@@ -42,6 +42,12 @@ notifications:
 schedule:
   run_after_close_local: "17:30"
   weekdays_only: true
+  # In-app scheduler (runs while the dashboard is open). The DGX deployment
+  # uses systemd timers instead; this is for live/dev use on any OS.
+  enabled: false            # master switch for the in-app scheduler
+  discovery_enabled: true   # also schedule weekly watchlist discovery
+  discovery_day: "sat"      # cron day-of-week (mon..sun / mon-fri / *)
+  discovery_time: "09:00"   # local HH:MM for the discovery run
 
 memo:
   # Pre-approval research memos — ADVISORY ONLY, never in the trade path.
