@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from trading_platform.core.config import load_config
 from trading_platform.core.db import connect, init_db
 from trading_platform.core.logging_setup import setup_logging
+from trading_platform.core.secrets import load_env_file
 from trading_platform.data.market_data import MarketDataService
 from trading_platform.data.universe import refresh_universe
 from trading_platform.discovery.screener import screen, weakest_incumbent
@@ -127,6 +128,7 @@ def main() -> None:
     args = parser.parse_args()
 
     setup_logging()
+    load_env_file(Path(__file__).resolve().parents[1] / ".env", override=False)
     config = load_config(args.config_dir)
     config_dir = Path(args.config_dir) if args.config_dir else config.root / "config"
     conn = connect(config.db_path)

@@ -52,6 +52,26 @@
     </form>
   </div>
 
+  <div class="card span12">
+    <h2>Credentials <span class="dim">— API keys</span></h2>
+    <p class="section-note">Stored in a local <code>.env</code> file (chmod 600), never in the git-tracked config and never shown back here.
+      Saving applies the key immediately — no restart needed. Leave a field blank and Save to clear it.</p>
+    {% for c in secrets %}
+    <form class="inline-form" style="margin-bottom:10px" hx-post="/secrets" hx-target="#settings-root" hx-swap="outerHTML" autocomplete="off">
+      <input type="hidden" name="env_name" value="{{ c.env }}">
+      <div class="field" style="min-width:280px">
+        <label>{{ c.label }}
+          {% if c.set %}<span class="pill on">set</span>{% else %}<span class="pill off">not set</span>{% endif %}
+          <span class="path">{{ c.env }}</span>
+        </label>
+        <input type="password" name="value" placeholder="{% if c.set %}enter a new value to replace{% else %}paste key to set{% endif %}" autocomplete="new-password">
+        <span class="path">{{ c.help }}</span>
+      </div>
+      <button class="save" type="submit">Save</button>
+    </form>
+    {% endfor %}
+  </div>
+
   {% for g in schema %}
   <div class="card span12">
     <h2>{{ g.title }} <span class="dim">— {{ g.file_key }}.yaml</span></h2>

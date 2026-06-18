@@ -2,9 +2,10 @@
 
 Read-only against SQLite except for: the two approval actions
 (approve/reject), the Settings page (which writes validated edits back to the
-config YAML via core.config_writer), watchlist edits, and the in-app
-scheduler controls. Binds 127.0.0.1 by default; there is no auth layer, so
-don't expose it beyond localhost.
+config YAML via core.config_writer), watchlist edits, API-key/credentials
+storage (core.secrets, written to a gitignored .env — never the YAML), and the
+in-app scheduler controls. Binds 127.0.0.1 by default; there is no auth layer,
+so don't expose it beyond localhost.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 
 from trading_platform.analytics.performance import performance_summary
 from trading_platform.core.config import AppConfig, load_config
-from trading_platform.core import config_writer
+from trading_platform.core import config_writer, secrets
 from trading_platform.core.db import connect, init_db
 from trading_platform.dashboard import queries
 from trading_platform.dashboard.scheduler import RunScheduler
@@ -58,6 +59,31 @@ def equity_svg(points: list[tuple[str, float]], width: int = 900, height: int = 
 </svg>"""
 
 
+def secrets_descriptor(config: AppConfig) -> list[dict]:
+    """The API keys the platform reads, derived from the configured env-var
+    names. Values are never included — only whether each is currently set."""
+    s = config.settings
+    items = [
+        (s.news.finnhub_api_key_env, "Finnhub API key",
+         "News agent — Finnhub free tier"),
+        (s.memo.api_key_env, "External LLM API key",
+         "Research memos — OpenAI-compatible endpoint (optional)"),
+        (s.execution.alpaca_key_env, "Alpaca API key ID",
+         "Paper trading — only used when broker = alpaca_paper"),
+        (s.execution.alpaca_secret_env, "Alpaca API secret",
+         "Paper trading — only used when broker = alpaca_paper"),
+    ]
+    seen: set[str] = set()
+    out: list[dict] = []
+    for env, label, help_text in items:
+        if not env or env in seen:
+            continue
+        seen.add(env)
+        out.append({"env": env, "label": label, "help": help_text,
+                    "set": secrets.is_set(env)})
+    return out
+
+
 def create_app(
     config: AppConfig | None = None,
     *,
@@ -67,7 +93,10 @@ def create_app(
     config = config or load_config()
     # Mutable holder so Settings edits can hot-swap the live config without a
     # restart. Every route reads cfg() rather than closing over `config`.
-    state = {"config": config, "config_dir": config.root / "config"}
+    config_dir = config.root / "config"
+    secrets_path = config.root / ".env"
+    secrets.load_env_file(secrets_path)  # make stored keys live for this process
+    state = {"config": config, "config_dir": config_dir, "secrets_path": secrets_path}
 
     def cfg() -> AppConfig:
         return state["config"]
@@ -154,6 +183,7 @@ def create_app(
         return {
             "schema": build_schema(cfg()),
             "watchlist": cfg().watchlist.tickers,
+            "secrets": secrets_descriptor(cfg()),
             "schedule_status": scheduler.status(),
             "flash": flash,
             "flash_ok": flash_ok,
@@ -196,6 +226,21 @@ def create_app(
             return _settings_partial(request, f"{file_key} saved", True)
         except Exception as exc:  # pydantic validation, etc. — file already rolled back
             return _settings_partial(request, f"rejected: {exc}", False)
+
+    @app.post("/secrets", response_class=HTMLResponse)
+    async def save_secret(request: Request):
+        form = await request.form()
+        env_name = str(form.get("env_name", "")).strip()
+        value = str(form.get("value", ""))
+        allowed = {d["env"] for d in secrets_descriptor(cfg())}
+        if env_name not in allowed:
+            return _settings_partial(request, f"unknown credential: {env_name}", False)
+        try:
+            secrets.write_secret(state["secrets_path"], env_name, value)
+            action = "cleared" if value.strip() == "" else "saved"
+            return _settings_partial(request, f"{env_name} {action}", True)
+        except Exception as exc:
+            return _settings_partial(request, str(exc), False)
 
     @app.post("/watchlist/add", response_class=HTMLResponse)
     async def watchlist_add(request: Request):
