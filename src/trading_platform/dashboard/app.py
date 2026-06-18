@@ -1,11 +1,12 @@
 """Dashboard — FastAPI + Jinja2 + HTMX, server-rendered, single user.
 
-Read-only against SQLite except for: the two approval actions
-(approve/reject), the Settings page (which writes validated edits back to the
-config YAML via core.config_writer), watchlist edits, API-key/credentials
-storage (core.secrets, written to a gitignored .env — never the YAML), and the
-in-app scheduler controls. Binds 127.0.0.1 by default; there is no auth layer,
-so don't expose it beyond localhost.
+Read-only against SQLite except for: the approval actions (approve/reject),
+watchlist discovery suggestions (approve/dismiss), the Settings page (which
+writes validated edits back to the config YAML via core.config_writer),
+watchlist edits, API-key/credentials storage (core.secrets, written to a
+gitignored .env — never the YAML), and the in-app scheduler controls. Binds
+127.0.0.1 by default; there is no auth layer, so don't expose it beyond
+localhost.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from trading_platform.core.db import connect, init_db
 from trading_platform.dashboard import queries
 from trading_platform.dashboard.scheduler import RunScheduler
 from trading_platform.dashboard.settings_schema import build_schema, coerce, coercion_map
+from trading_platform.discovery.suggestions import approve_suggestion, dismiss_suggestion
 from trading_platform.execution.approval import approve_and_submit
 from trading_platform.execution.orders import reject_order
 from trading_platform.pipeline import AGENT_STAGES
@@ -177,6 +179,43 @@ def create_app(
     @app.post("/orders/{order_id}/reject", response_class=HTMLResponse)
     def reject(request: Request, order_id: str):
         return _decide(request, order_id, reject_order)
+
+    # ----- Watchlist discovery suggestions --------------------------------
+    def _suggestions_partial(request: Request, conn, flash: str | None,
+                             ok: bool) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request, "partials/suggestions.html",
+            {"request": request, "suggestions": queries.latest_suggestions(conn),
+             "sugg_flash": flash, "sugg_ok": ok},
+        )
+
+    @app.post("/suggestions/{ticker}/approve", response_class=HTMLResponse)
+    def suggestion_approve(request: Request, ticker: str):
+        conn = db()
+        try:
+            try:
+                new_config, sector = approve_suggestion(
+                    conn, cfg(), state["config_dir"], ticker)
+                state["config"] = new_config
+                flash, ok = f"added {ticker.upper()} ({sector}) to the watchlist", True
+            except Exception as exc:
+                flash, ok = str(exc), False
+            return _suggestions_partial(request, conn, flash, ok)
+        finally:
+            conn.close()
+
+    @app.post("/suggestions/{ticker}/dismiss", response_class=HTMLResponse)
+    def suggestion_dismiss(request: Request, ticker: str):
+        conn = db()
+        try:
+            try:
+                dismiss_suggestion(conn, ticker)
+                flash, ok = f"dismissed {ticker.upper()}", True
+            except Exception as exc:
+                flash, ok = str(exc), False
+            return _suggestions_partial(request, conn, flash, ok)
+        finally:
+            conn.close()
 
     # ----- Settings (writable) --------------------------------------------
     def settings_context(flash: str | None = None, flash_ok: bool = True) -> dict:

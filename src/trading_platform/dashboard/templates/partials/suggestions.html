@@ -1,0 +1,33 @@
+<section class="card span12" id="suggestions">
+  <h2>Watchlist Suggestions <span class="dim">· approve or dismiss inline</span></h2>
+  {% if sugg_flash %}<div class="flash {{ 'ok' if sugg_ok else 'err' }}">{{ sugg_flash }}</div>{% endif %}
+  {% if suggestions %}
+  <table>
+    <tr><th>Ticker</th><th>Sector</th><th class="num">Technical</th>
+        <th class="num">Fundamentals</th><th class="num">Gap</th>
+        <th class="num">Combined</th><th>Status</th><th>Rationale</th><th class="num">Action</th></tr>
+    {% for s in suggestions %}
+    <tr>
+      <td>{{ s.ticker }}</td>
+      <td class="dim">{{ s.sector }}</td>
+      <td class="num">{{ "{:.1f}".format(s.technical_score) }}</td>
+      <td class="num">{{ "{:.1f}".format(s.fundamental_score) }}</td>
+      <td class="num">{{ "+{:.0f}".format(s.sector_gap_bonus) }}</td>
+      <td class="num"><strong>{{ "{:.1f}".format(s.combined_score) }}</strong></td>
+      <td class="{{ 'up' if s.status == 'added' else ('down' if s.status == 'dismissed' else 'dim') }}">{{ s.status }}</td>
+      <td class="dim" style="max-width:320px">{{ s.rationale[:90] }}</td>
+      <td class="num" style="white-space:nowrap">
+        {% if s.status == 'suggested' %}
+          <button class="approve" hx-post="/suggestions/{{ s.ticker }}/approve" hx-target="#suggestions" hx-swap="outerHTML">approve</button>
+          <button class="reject" hx-post="/suggestions/{{ s.ticker }}/dismiss" hx-target="#suggestions" hx-swap="outerHTML">dismiss</button>
+        {% else %}
+          <span class="dim">—</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <div class="empty">no suggestions yet — run discovery (Settings → Scheduler → Run now)</div>
+  {% endif %}
+</section>
