@@ -129,7 +129,7 @@ def run_daily(
         # today's open, BEFORE analysis (fills change positions and cash).
         mark_stage(conn, run_id, EXECUTION_STAGE, "running")
         ensure_account(conn, config.risk.paper_account.starting_cash)
-        n_expired = expire_stale_orders(conn, run_date)
+        n_expired = expire_stale_orders(conn, run_date, run_id)
         n_filled = _process_fills(conn, config, market_data, run_date, as_of, frames)
         mark_stage(conn, run_id, EXECUTION_STAGE, "completed",
                    detail=f"{n_filled} filled, {n_expired} expired")

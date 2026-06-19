@@ -1,0 +1,458 @@
+{
+  "C:\\Users\\rkidney\\Documents\\trading\\scripts\\approve_trades.py": {
+    "mtime": 1781269697.4158752,
+    "hash": "08a30beb65643ef967b61346e9f15279"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\scripts\\discover_stocks.py": {
+    "mtime": 1781784227.400831,
+    "hash": "2a110b6d1be8eb13e68d892746fa33ab"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\scripts\\init_db.py": {
+    "mtime": 1781179305.6608665,
+    "hash": "a95456257efa6d0d5770963b91d6d196"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\scripts\\refresh_market_data.py": {
+    "mtime": 1781180089.9288876,
+    "hash": "17e90955f6d84e3bb73dc9d72a70395d"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\scripts\\run_backtest.py": {
+    "mtime": 1781189018.394686,
+    "hash": "80f0964e001158062ca9d67395a487cd"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\scripts\\run_daily_analysis.py": {
+    "mtime": 1781784205.3743443,
+    "hash": "f1774a539abb4f440514373c9d7b60f0"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\scripts\\run_dashboard.py": {
+    "mtime": 1781188223.3846972,
+    "hash": "29544c3007859c8be6f5babf40e3ea9c"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\scripts\\show_performance.py": {
+    "mtime": 1781187512.3008206,
+    "hash": "9292bf7fa4003c18962485ffdd383697"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\pipeline.py": {
+    "mtime": 1781269644.1812077,
+    "hash": "ecd70ebe0f979828bd16aa2344cac3ed"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\__init__.py": {
+    "mtime": 1781179209.0073376,
+    "hash": "3fd1ba17124357be76d18b2134c5192c"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\agents\\decision.py": {
+    "mtime": 1781184278.0841618,
+    "hash": "27ba1950eb81cad1107b65e32520a2ff"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\agents\\fundamentals.py": {
+    "mtime": 1781180986.8558095,
+    "hash": "b01a1b1d2ef7c7968226b4214ac7c2a9"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\agents\\kronos.py": {
+    "mtime": 1781181557.6008506,
+    "hash": "4ba7f9dc6f1d7b55529ccb953a2d9462"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\agents\\news.py": {
+    "mtime": 1781733231.7118382,
+    "hash": "2373543d973540dc795ef8b0c8adb545"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\agents\\portfolio.py": {
+    "mtime": 1781268838.5819485,
+    "hash": "6bba980c1ff11734f289090c93dc83fc"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\agents\\sec_filing.py": {
+    "mtime": 1781182202.1955562,
+    "hash": "505a9ad822e3fa4e6e122b3223972ddd"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\agents\\technical.py": {
+    "mtime": 1781180654.271253,
+    "hash": "a6791c52a8c74a8c4bfabe3589b13025"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\agents\\__init__.py": {
+    "mtime": 1781180633.0322535,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\analytics\\performance.py": {
+    "mtime": 1781187407.107908,
+    "hash": "fb872393e482e9b477d5dc5cab245c72"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\analytics\\__init__.py": {
+    "mtime": 1781187376.185942,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\backtest\\replay.py": {
+    "mtime": 1781268913.9486248,
+    "hash": "f3cdd267109b7ff3b23c3cfac1484c89"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\backtest\\__init__.py": {
+    "mtime": 1781188797.2166438,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\core\\config.py": {
+    "mtime": 1781747442.7426467,
+    "hash": "0580e564b6ecafaf9ea54a6708644b95"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\core\\config_writer.py": {
+    "mtime": 1781747486.071338,
+    "hash": "bcdfd6e4caf9297be6e2be076ea0aed3"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\core\\db.py": {
+    "mtime": 1781269557.0864675,
+    "hash": "c4797697410aa5f994751bef3a283785"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\core\\llm.py": {
+    "mtime": 1781269582.517138,
+    "hash": "bd03d3ad1e2a7c3e2126d5a571585dd2"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\core\\logging_setup.py": {
+    "mtime": 1781179284.5391107,
+    "hash": "4f38bfa55b2cb8f154a60065f0c6f182"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\core\\models.py": {
+    "mtime": 1781184252.1124775,
+    "hash": "8192c9ff4a17c7627127904a979e013d"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\core\\notify.py": {
+    "mtime": 1781186781.1786306,
+    "hash": "27ee25c5aa0abb0d7cee56ad601d1a98"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\core\\runs.py": {
+    "mtime": 1781179281.9859917,
+    "hash": "c42ad96e2c86271f49fcfedd58186e41"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\core\\__init__.py": {
+    "mtime": 1781179210.68435,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\dashboard\\app.py": {
+    "mtime": 1781789715.0235784,
+    "hash": "355f8ffabe07d327a20bc96bd2a3764c"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\dashboard\\queries.py": {
+    "mtime": 1781269658.9756691,
+    "hash": "3124f35ddbb28874b8327d57d44612ab"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\dashboard\\scheduler.py": {
+    "mtime": 1781747550.7647219,
+    "hash": "56d18f909b37216a2edb8eaba72cd905"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\dashboard\\settings_schema.py": {
+    "mtime": 1781747614.0267131,
+    "hash": "f4390b89d56078f8fc6cc3782c23469c"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\dashboard\\__init__.py": {
+    "mtime": 1781188057.8194182,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\data\\fundamentals.py": {
+    "mtime": 1781180944.8605702,
+    "hash": "264b6c41b0d4f8cd0acb9813a71cd437"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\data\\macro.py": {
+    "mtime": 1781269095.2328477,
+    "hash": "5b55b296dcbc440b230631aa0e79c78c"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\data\\market_data.py": {
+    "mtime": 1781184809.6545756,
+    "hash": "f47c355de37221527c831c77ef4fe3a3"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\data\\news.py": {
+    "mtime": 1781182135.3332205,
+    "hash": "81a93209e8b9576e9efb57bc4276f8f6"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\data\\quality.py": {
+    "mtime": 1781180243.7583942,
+    "hash": "8a7471a8b78a486bbb722dea11b3afd4"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\data\\sec.py": {
+    "mtime": 1781182176.8816068,
+    "hash": "3517456823539d3e62b9bf4e618dc75d"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\data\\universe.py": {
+    "mtime": 1781190740.4453685,
+    "hash": "55506acd67dba536157c2a65e0698477"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\data\\__init__.py": {
+    "mtime": 1781180008.5586002,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\discovery\\screener.py": {
+    "mtime": 1781190543.5952163,
+    "hash": "b9f0866cb3b2cefa6b9e3e3f720abf6d"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\discovery\\suggestions.py": {
+    "mtime": 1781789235.871104,
+    "hash": "b1d10af8c1221ec4fad0cd41f9094d2e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\discovery\\__init__.py": {
+    "mtime": 1781190515.2020507,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\execution\\account.py": {
+    "mtime": 1781184343.2495544,
+    "hash": "f6c689368c4fae47956a99b9c05eb19e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\execution\\alpaca.py": {
+    "mtime": 1781189610.3856778,
+    "hash": "1be66b053d73a41e3f981288b6be4a36"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\execution\\alpaca_sync.py": {
+    "mtime": 1781189691.8877904,
+    "hash": "4a0b3bf9c3ab97de90f72a4b03a6b33a"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\execution\\approval.py": {
+    "mtime": 1781189659.7691336,
+    "hash": "459cfc8af724541c299c54ec2beed257"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\execution\\orders.py": {
+    "mtime": 1781186008.1932566,
+    "hash": "73cd2eb90eb3f535ef3a212a194c35ad"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\execution\\paper_broker.py": {
+    "mtime": 1781789667.5173595,
+    "hash": "1e6900a618073da6a498095bbdafd13a"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\execution\\__init__.py": {
+    "mtime": 1781184337.2346466,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\forecast\\kronos_forecaster.py": {
+    "mtime": 1781181535.8453453,
+    "hash": "99f5de265c08cf914bab1668f50b4c6f"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\forecast\\__init__.py": {
+    "mtime": 1781181524.6491287,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\research\\memo.py": {
+    "mtime": 1781269758.5689785,
+    "hash": "ed5d8e8aad6d441318b37ac49da90851"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\research\\__init__.py": {
+    "mtime": 1781269592.6333942,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\risk\\engine.py": {
+    "mtime": 1781185253.1733632,
+    "hash": "131d29961e2f9950a5661e7e0682a1bc"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\risk\\regime.py": {
+    "mtime": 1781268823.046431,
+    "hash": "6eefede57f8d5a1b247263f75a6c6d99"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\risk\\__init__.py": {
+    "mtime": 1781185229.0487914,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\vendor\\kronos\\kronos.py": {
+    "mtime": 1781181503.1391945,
+    "hash": "665116375dac1607a06b24938eb5f22f"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\vendor\\kronos\\module.py": {
+    "mtime": 1781181376.73781,
+    "hash": "a829385464619ea9522705341b7f9329"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\vendor\\kronos\\__init__.py": {
+    "mtime": 1781181376.1548295,
+    "hash": "1887de3a33c9b27b954337f57b423db4"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\conftest.py": {
+    "mtime": 1781179320.3471231,
+    "hash": "5b823907809f1906add5b871b5c65052"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\fixtures.py": {
+    "mtime": 1781188909.307915,
+    "hash": "2cb9a91dc1371f941b8b32021d97198e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_alpaca.py": {
+    "mtime": 1781189815.6179376,
+    "hash": "4225e607d263353db64097e6d9e73f8e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_analytics.py": {
+    "mtime": 1781187659.2947693,
+    "hash": "054eec8a71574d17905951632c06fd21"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_backtest.py": {
+    "mtime": 1781189274.3988574,
+    "hash": "0734d3a8c26b98a588fc6e307a3ae05e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_config.py": {
+    "mtime": 1781179325.0691857,
+    "hash": "d9c558de4dd98858e02a7d89bb02a869"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_dashboard.py": {
+    "mtime": 1781188244.774759,
+    "hash": "057ad2005d0fbb66ddd865a80b6159f7"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_db.py": {
+    "mtime": 1781179330.3120506,
+    "hash": "b1bf9ac4871f34088466c989b4f0fa20"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_decision.py": {
+    "mtime": 1781184427.6863513,
+    "hash": "a768bffb37da9f1ecfdcbb2821a973c1"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_discovery.py": {
+    "mtime": 1781191021.1510108,
+    "hash": "508449921db1b15833649bff9cae5550"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_fundamentals.py": {
+    "mtime": 1781181106.0686345,
+    "hash": "1ea10da8673397fe78f9513090fcec47"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_kronos.py": {
+    "mtime": 1781181654.3500195,
+    "hash": "adbf69113cbb480cd3107606664487d3"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_llm_client.py": {
+    "mtime": 1781182236.5122628,
+    "hash": "657d3cfe8d6ea6240e81280b0437264a"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_macro.py": {
+    "mtime": 1781268948.5903351,
+    "hash": "384673292374a5c5132a9f5361b3b73f"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_market_data.py": {
+    "mtime": 1781184829.7413168,
+    "hash": "e57978d13068e3a2e6a526ad8a2c3c9a"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_memo.py": {
+    "mtime": 1781269804.213591,
+    "hash": "5a5233f2b0fe3c141d8bbcc2dbfb9ca0"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_models.py": {
+    "mtime": 1781179352.278819,
+    "hash": "883990ec8903c4b61c2345b8fe16babb"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_news_agent.py": {
+    "mtime": 1781182268.1512146,
+    "hash": "2a4c3657ca0a5177d349c8f54d239eb8"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_notify.py": {
+    "mtime": 1781186933.9617703,
+    "hash": "ed85154cf5bbadee1c5db1e521ab4282"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_paper_trading.py": {
+    "mtime": 1781186300.5216682,
+    "hash": "8cb2adac03e1e4778c16b6cd64f6e3df"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_pipeline.py": {
+    "mtime": 1781269771.1185827,
+    "hash": "39bb3bca963389770dba679737d5732c"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_portfolio.py": {
+    "mtime": 1781191021.1510108,
+    "hash": "f668e079e25101387dbb571316112d94"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_quality.py": {
+    "mtime": 1781180116.3114915,
+    "hash": "ff5a55e54f3633330f87d4f20a001b1e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_risk.py": {
+    "mtime": 1781191021.1510108,
+    "hash": "bda5eae4dc86ca0db108ce41fead26f5"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_runs.py": {
+    "mtime": 1781179348.048064,
+    "hash": "07b1eabf72b495dbaf47d44495021fc1"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_sec_agent.py": {
+    "mtime": 1781182288.3397675,
+    "hash": "2ff45eca373c5c1dda702bd6552db3bd"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_settings.py": {
+    "mtime": 1781747839.0264754,
+    "hash": "15e5fb46dea917e7d1c17c57950f82f3"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\test_technical.py": {
+    "mtime": 1781180733.7396615,
+    "hash": "22c2cc31b797954d63d16ceda55a8a97"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\tests\\__init__.py": {
+    "mtime": 1781180205.4425392,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\PLAN.md": {
+    "mtime": 1781179074.4049904,
+    "hash": "157dcf39cb5d5e4ddaa1d1fe5bc8f146"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\README.md": {
+    "mtime": 1781270453.114827,
+    "hash": "a48504a8b18d1c3162a3074f77ae7454"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\trading.md": {
+    "mtime": 1781178070.2805595,
+    "hash": "72c33e0f072514bcefc2c74777986ef6"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\config\\risk_limits.yaml": {
+    "mtime": 1781185222.1095023,
+    "hash": "29e0b07f10620549eafd0f970cf30536"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\config\\settings.yaml": {
+    "mtime": 1781747460.3610544,
+    "hash": "17e779431182f86589b50026a10044b9"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\config\\watchlist.yaml": {
+    "mtime": 1781190919.4473696,
+    "hash": "b0ffed55ca66b33a1888ffec4027101e"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\config\\weights.yaml": {
+    "mtime": 1781184243.495876,
+    "hash": "b8fa103b9ee9862b8ce7ed658d0a0268"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\deploy\\DGX_SPARK_DEPLOYMENT.md": {
+    "mtime": 1781739300.7660778,
+    "hash": "d4cc338fcef9617939855ede317c0d15"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\deploy\\SETUP.md": {
+    "mtime": 1781197852.4826274,
+    "hash": "57ffeae7a0a3143a1caed2aa04a3c4d5"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\reports\\backtests\\bt-2yr-technical.md": {
+    "mtime": 1781189184.8440082,
+    "hash": "2aa63dacfc2b9c7c84529b82a5be2545"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\reports\\daily\\2026-06-11.md": {
+    "mtime": 1781187870.1925738,
+    "hash": "38f295c52988ae5e7c388aa218c5c768"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\reports\\daily\\2026-06-12.md": {
+    "mtime": 1781269337.0321772,
+    "hash": "eea79d1898ded2a7afb7648124d9c1f1"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\reports\\discovery\\2026-06-11.md": {
+    "mtime": 1781191126.277384,
+    "hash": "63a9bedf6a43b3980e3cf4c9f268f994"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\dashboard\\templates\\base.html": {
+    "mtime": 1781747731.3078818,
+    "hash": "932131f26ef66098d182aa44536a9523"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\dashboard\\templates\\index.html": {
+    "mtime": 1781789149.3600602,
+    "hash": "428828f81fd3144a35301243b7170736"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\dashboard\\templates\\reports.html": {
+    "mtime": 1781188210.9333065,
+    "hash": "a073e4e4dd93b1eda027d7985906e57d"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\dashboard\\templates\\settings.html": {
+    "mtime": 1781747795.6259074,
+    "hash": "3cbf01a83c2559dce9eda07874de16fa"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\dashboard\\templates\\partials\\approvals.html": {
+    "mtime": 1781269668.037558,
+    "hash": "216d19904a3d8076da5fa2e92697a210"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\dashboard\\templates\\partials\\settings_body.html": {
+    "mtime": 1781789724.1251192,
+    "hash": "0002dcf9f0d90b126208011ffa38629a"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\dashboard\\templates\\partials\\suggestions.html": {
+    "mtime": 1781789142.3591075,
+    "hash": "c574c534029c010e57e6a5fff66ba232"
+  },
+  "C:\\Users\\rkidney\\Documents\\trading\\src\\trading_platform\\dashboard\\templates\\partials\\_field.html": {
+    "mtime": 1781747775.9794247,
+    "hash": "75f2ce1433904713eec8d395950b1d8e"
+  }
+}

@@ -40,7 +40,25 @@ def submit_order(
     auto_approve: bool,
     context: dict | None = None,
 ) -> str | None:
-    """Create an order; returns its id (existing id if already submitted)."""
+    """Create an order; returns its id (existing id if already submitted).
+
+    De-duplication is two-layered. The UNIQUE(run_id, ticker, side) constraint
+    blocks repeats within a single run. On top of that, an explicit open-order
+    check blocks *cross-run* duplicates: if an order for this ticker+side is
+    still open (awaiting_approval or approved — i.e. not yet filled, rejected,
+    or expired) from any run, we return that order rather than queueing a
+    second one. This stops a re-run from stacking a duplicate buy on top of one
+    that hasn't filled yet, regardless of when the re-run happens.
+    """
+    open_existing = conn.execute(
+        "SELECT order_id FROM orders WHERE ticker = ? AND side = ? "
+        "AND status IN ('awaiting_approval', 'approved') "
+        "ORDER BY created_at LIMIT 1",
+        (ticker, side),
+    ).fetchone()
+    if open_existing:
+        return open_existing["order_id"]
+
     order_id = uuid.uuid4().hex[:12]
     status = "approved" if auto_approve else "awaiting_approval"
     now = utcnow().isoformat()
@@ -105,16 +123,39 @@ def reject_order(conn: sqlite3.Connection, order_id: str) -> None:
     _transition(conn, order_id, "rejected")
 
 
-def expire_stale_orders(conn: sqlite3.Connection, current_run_date: str) -> int:
-    """Expire orders still awaiting approval from runs before current_run_date."""
-    cursor = conn.execute(
-        """
-        UPDATE orders SET status = 'expired', decided_at = ?
-        WHERE status = 'awaiting_approval'
-          AND run_id IN (SELECT run_id FROM runs WHERE run_date < ?)
-        """,
-        (utcnow().isoformat(), current_run_date),
-    )
+def expire_stale_orders(
+    conn: sqlite3.Connection,
+    current_run_date: str,
+    current_run_id: str | None = None,
+) -> int:
+    """Expire still-awaiting orders that the current run supersedes.
+
+    Always expires pending orders from runs on earlier dates. When
+    current_run_id is given, also expires pending orders from *other* runs on
+    the same date — so re-running a day replaces that day's approval queue
+    instead of stacking a second copy of it. Approved orders are never touched
+    (only the human, a fill, or the broker move those).
+    """
+    now = utcnow().isoformat()
+    if current_run_id is None:
+        cursor = conn.execute(
+            """
+            UPDATE orders SET status = 'expired', decided_at = ?
+            WHERE status = 'awaiting_approval'
+              AND run_id IN (SELECT run_id FROM runs WHERE run_date < ?)
+            """,
+            (now, current_run_date),
+        )
+    else:
+        cursor = conn.execute(
+            """
+            UPDATE orders SET status = 'expired', decided_at = ?
+            WHERE status = 'awaiting_approval'
+              AND run_id != ?
+              AND run_id IN (SELECT run_id FROM runs WHERE run_date <= ?)
+            """,
+            (now, current_run_id, current_run_date),
+        )
     conn.commit()
     return cursor.rowcount
 

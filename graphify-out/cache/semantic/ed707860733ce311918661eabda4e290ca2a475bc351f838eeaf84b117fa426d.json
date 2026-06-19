@@ -1,0 +1,1 @@
+{"nodes": [{"id": "sec_fetch_latest_filing", "label": "fetch_latest_filing", "file_type": "code", "source_file": "src/trading_platform/data/sec.py", "source_location": null, "source_url": null, "captured_at": null, "author": null, "contributor": null}], "edges": [], "hyperedges": []}
