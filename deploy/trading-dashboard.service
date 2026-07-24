@@ -1,0 +1,23 @@
+[Unit]
+Description=Trading platform dashboard (FastAPI UI, always-on)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rkidney
+Group=rkidney
+WorkingDirectory=/opt/trading
+EnvironmentFile=-/opt/trading/.env
+Environment=PYTHONUNBUFFERED=1
+# No auth layer — only bind beyond localhost on a trusted network.
+# Use --host 127.0.0.1 instead if you front it with a reverse proxy.
+# Run the venv's Python directly — never `uv run` from systemd (it rebuilds the
+# editable install into .venv on every start and trips on file permissions).
+# Run `uv sync` by hand after deploying deps; the service just executes.
+ExecStart=/opt/trading/.venv/bin/python scripts/run_dashboard.py --host 0.0.0.0
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

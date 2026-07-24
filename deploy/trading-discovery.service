@@ -5,10 +5,11 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=trading
+User=rkidney
+Group=rkidney
 WorkingDirectory=/opt/trading
-EnvironmentFile=-/etc/trading-platform.env
-ExecStart=/usr/local/bin/uv run python scripts/discover_stocks.py
+EnvironmentFile=-/opt/trading/.env
+ExecStart=/opt/trading/.venv/bin/python scripts/discover_stocks.py
 # ~60 candidates x (download + fundamentals); generous ceiling.
 TimeoutStartSec=1800
 Nice=10

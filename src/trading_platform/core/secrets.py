@@ -13,21 +13,31 @@ a given variable is currently set.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def load_env_file(path: Path | str, *, override: bool = True) -> int:
     """Load ``KEY=value`` lines from ``path`` into ``os.environ``.
 
-    Returns the number of variables applied. Missing file is a no-op (0).
+    Returns the number of variables applied. A missing or unreadable file is a
+    no-op (0) and never raises — secrets loading must never take down the
+    dashboard; the worst case is that keys simply aren't set.
     With ``override=False`` an already-set variable is left untouched.
     """
     path = Path(path)
     if not path.exists():
         return 0
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.warning("could not read env file %s: %s", path, exc)
+        return 0
     n = 0
-    for raw in path.read_text(encoding="utf-8").splitlines():
+    for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue

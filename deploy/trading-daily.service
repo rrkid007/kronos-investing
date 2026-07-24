@@ -7,11 +7,13 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=trading
+User=rkidney
+Group=rkidney
 WorkingDirectory=/opt/trading
-# FINNHUB_API_KEY and any overrides live here, never in the repo:
-EnvironmentFile=-/etc/trading-platform.env
-ExecStart=/usr/local/bin/uv run python scripts/run_daily_analysis.py
+# Secrets live in the repo .env (chmod 600), also loaded by the run script.
+# Optional ("-") so a missing file never blocks the run.
+EnvironmentFile=-/opt/trading/.env
+ExecStart=/opt/trading/.venv/bin/python scripts/run_daily_analysis.py
 # Kronos + LLM analysis for the watchlist; generous ceiling.
 TimeoutStartSec=5400
 Nice=5
