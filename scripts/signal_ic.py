@@ -54,6 +54,10 @@ from trading_platform.core.db import connect
 # window. Below this a score is technically produced but not comparable.
 MIN_BARS = {"technical": 250, "kronos": 400}
 
+# A t-statistic over a handful of dates is noise wearing a suit. Probe runs
+# (--limit) routinely produce |t| > 2 on 3 dates; refuse to render a verdict.
+MIN_DATES_FOR_VERDICT = 20
+
 
 def build_agent(name: str, config, sample_count: int | None):
     if name == "technical":
@@ -99,12 +103,28 @@ def summarize(rows: list[dict], horizon: int) -> None:
           f"{df['date'].nunique()} dates | {df['ticker'].nunique()} tickers | "
           f"horizon {horizon}d\n{'=' * 66}")
 
+    # Rank on the unclamped forecast when the agent provides one. A saturated
+    # score is a wall of ties, and ties carry no ranking information — the IC
+    # would be measuring the handful of unclamped names only.
+    signal = "score"
+    if "expected_return_pct" in df and df["expected_return_pct"].notna().all():
+        signal = "expected_return_pct"
+
+    clamped = ((df["score"] == 0) | (df["score"] == 100)).mean()
+    if clamped > 0.10:
+        print(f"\n  !! {clamped * 100:.0f}% of scores are clamped at 0 or 100.")
+        print("     The +/-8% RETURN_ANCHOR in agents/kronos.py is saturating.")
+        print(f"     Ranking on '{signal}' instead; the score itself is unusable")
+        print("     as a cross-sectional signal at this calibration.")
+
+    print(f"\n  ranking signal: {signal}")
+
     # Per-date cross-sectional rank correlation, then averaged. Dates with
     # fewer than 3 names can't support a meaningful correlation.
     ics = []
     for day, group in df.groupby("date"):
-        if len(group) >= 3 and group["score"].nunique() > 1:
-            ic = rank_corr(group["score"], group["fwd_return_pct"])
+        if len(group) >= 3 and group[signal].nunique() > 1:
+            ic = rank_corr(group[signal], group["fwd_return_pct"])
             if pd.notna(ic):
                 ics.append(ic)
 
@@ -121,12 +141,12 @@ def summarize(rows: list[dict], horizon: int) -> None:
         print("\n  too few usable dates for a per-date IC")
         t_stat = float("nan")
 
-    pooled = rank_corr(df["score"], df["fwd_return_pct"])
+    pooled = rank_corr(df[signal], df["fwd_return_pct"])
     print(f"  pooled rank corr {pooled:+.4f}")
 
     # Top-half vs bottom-half spread, ranked within each date so the split is
     # cross-sectional rather than contaminated by market-wide moves.
-    df["rank"] = df.groupby("date")["score"].rank(pct=True)
+    df["rank"] = df.groupby("date")[signal].rank(pct=True)
     top = df[df["rank"] > 0.5]["fwd_return_pct"]
     bottom = df[df["rank"] <= 0.5]["fwd_return_pct"]
     if len(top) and len(bottom):
@@ -144,7 +164,11 @@ def summarize(rows: list[dict], horizon: int) -> None:
               f"(n={len(directional)}, coin flip = 50%)")
 
     print(f"\n{'-' * 66}")
-    if pd.notna(t_stat) and abs(t_stat) >= 2:
+    if len(ics) < MIN_DATES_FOR_VERDICT:
+        print(f"  Only {len(ics)} dates — too few to judge either way. A t-stat over")
+        print(f"  a handful of dates is noise; need >= {MIN_DATES_FOR_VERDICT}.")
+        print("  Re-run without --limit before drawing any conclusion.")
+    elif pd.notna(t_stat) and abs(t_stat) >= 2:
         print("  |t| >= 2: the signal is statistically distinguishable from noise.")
         print("  Worth taking to run_backtest.py to see if it survives costs.")
     else:
@@ -238,8 +262,8 @@ def main() -> None:
 
     with out_path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=[
-            "date", "ticker", "agent", "score", "confidence", "direction",
-            "fwd_return_pct", "horizon",
+            "date", "ticker", "agent", "score", "expected_return_pct",
+            "confidence", "direction", "fwd_return_pct", "horizon",
         ])
         writer.writeheader()
 
@@ -271,6 +295,12 @@ def main() -> None:
                     "ticker": ticker,
                     "agent": args.agent,
                     "score": result.score,
+                    # The unclamped forecast. `score` saturates at 0/100 once
+                    # the expected return leaves +/-RETURN_ANCHOR, and on real
+                    # data Kronos leaves it constantly — so the score can be a
+                    # wall of ties while the underlying forecast still ranks
+                    # names correctly. Always prefer this for skill analysis.
+                    "expected_return_pct": result.details.get("expected_return_pct"),
                     "confidence": result.confidence,
                     "direction": result.direction.value,
                     "fwd_return_pct": round(fwd, 4),
