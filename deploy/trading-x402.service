@@ -19,8 +19,14 @@ Environment=PYTHONUNBUFFERED=1
 # buyers to reach it.
 #
 # Run the venv's Python directly — never `uv run` from systemd (it rebuilds the
-# editable install into .venv on every start and trips on file permissions).
+# editable install into .venv on every start and trips on file permissions,
+# and re-syncs the venv, which would revert a hand-pinned CUDA torch).
 # Same rule as trading-dashboard.service.
+#
+# Startup loads the model and runs one throwaway forecast before serving, so
+# the first paying request doesn't absorb the load time. The port won't answer
+# until that finishes — expect a delay on first boot if the HuggingFace weights
+# aren't cached yet. Set KRONOS_SERVICE_WARMUP=0 to fall back to lazy loading.
 ExecStart=/opt/trading/.venv/bin/python scripts/run_service.py
 Restart=on-failure
 RestartSec=5

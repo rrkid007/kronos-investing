@@ -6,6 +6,8 @@ is charged only when a forecast was actually produced — which in x402 terms
 means every failure path must be non-2xx, because settlement follows a 2xx.
 """
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -13,15 +15,17 @@ from tests.fixtures import FakeForecaster, make_ohlcv
 from trading_platform.agents.kronos import KronosAgent
 from trading_platform.core.config import KronosSettings
 from trading_platform.core.models import Direction
+from trading_platform.service import validation
 from trading_platform.service.app import create_service_app
 from trading_platform.service.config import (
     BASE_MAINNET,
     BASE_SEPOLIA,
     TESTNET_FACILITATOR,
     ServiceConfig,
+    load_kronos_settings,
 )
 from trading_platform.service.payments import PaymentsUnavailable, attach_payments
-from trading_platform.service.runner import ForecastRunner
+from trading_platform.service.runner import ForecastRunner, synthetic_frame
 from trading_platform.service.tiers import DEEP, STANDARD
 
 SETTINGS = KronosSettings()
@@ -60,6 +64,137 @@ def test_health_is_free_and_reports_payment_state():
     assert body["status"] == "ok"
     assert body["payments_active"] is False
     assert body["queue_limit"] == 8
+
+
+# --- startup warmup ---------------------------------------------------------
+
+def test_warmup_loads_the_model_and_marks_ready():
+    runner = ForecastRunner(SETTINGS, forecaster=FakeForecaster())
+    assert asyncio.run(runner.warmup()) is True
+    assert runner.model_ready
+    assert runner.warmup_error is None
+    assert runner.warmup_seconds is not None
+
+
+def test_warmup_uses_a_coherent_synthetic_frame():
+    """The warmup frame must pass the same gate real callers face, or warmup
+    would 'succeed' on input we'd reject from a customer."""
+    df = synthetic_frame(SETTINGS.context_candles)
+    assert len(df) == SETTINGS.context_candles
+    assert validation.validate_candles(df) == []
+
+
+def test_failed_warmup_is_recorded_not_raised():
+    """A crash-looping service is harder to diagnose than a degraded one."""
+    runner = ForecastRunner(SETTINGS, forecaster=FakeForecaster(fail=RuntimeError("CUDA OOM")))
+    assert asyncio.run(runner.warmup()) is False
+    assert runner.model_ready is False
+    assert "CUDA OOM" in runner.warmup_error
+
+
+def test_health_reports_503_after_a_failed_warmup():
+    runner = ForecastRunner(SETTINGS, forecaster=FakeForecaster(fail=RuntimeError("CUDA OOM")))
+    asyncio.run(runner.warmup())
+    resp = make_client(runner=runner).get("/health")
+    assert resp.status_code == 503
+    assert resp.json()["status"] == "degraded"
+    assert resp.json()["model_ready"] is False
+
+
+def test_health_is_ok_after_a_successful_warmup():
+    runner = ForecastRunner(SETTINGS, forecaster=FakeForecaster())
+    asyncio.run(runner.warmup())
+    resp = make_client(runner=runner).get("/health")
+    assert resp.status_code == 200
+    assert resp.json()["model_ready"] is True
+
+
+def test_health_is_ok_when_warmup_was_never_attempted():
+    """Lazy loading is a valid mode (--no-warmup), not a fault."""
+    resp = make_client(FakeForecaster()).get("/health")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
+    assert resp.json()["model_ready"] is False
+
+
+def test_lifespan_runs_warmup_when_enabled():
+    cfg = ServiceConfig(payments_enabled=False, warmup_on_startup=True)
+    app = create_service_app(
+        kronos_settings=SETTINGS, config=cfg, forecaster=FakeForecaster()
+    )
+    with TestClient(app) as client:  # context manager triggers lifespan
+        body = client.get("/health").json()
+    assert body["model_ready"] is True
+    assert body["warmup_seconds"] is not None
+
+
+def test_lifespan_skips_warmup_when_disabled():
+    cfg = ServiceConfig(payments_enabled=False, warmup_on_startup=False)
+    app = create_service_app(
+        kronos_settings=SETTINGS, config=cfg, forecaster=FakeForecaster()
+    )
+    with TestClient(app) as client:
+        body = client.get("/health").json()
+    assert body["model_ready"] is False
+    assert body["status"] == "ok"
+
+
+# --- kronos settings loading (decoupled from load_config) --------------------
+
+def test_kronos_settings_read_from_yaml_block(tmp_path):
+    path = tmp_path / "settings.yaml"
+    path.write_text(
+        "kronos:\n  model_id: NeoQuasar/Kronos-base\n  horizon_days: 5\n"
+        "news:\n  lookback_days: 7\n",
+        encoding="utf-8",
+    )
+    s = load_kronos_settings(path, env={})
+    assert s.model_id == "NeoQuasar/Kronos-base"
+    assert s.horizon_days == 5
+    assert s.top_p == 0.9  # untouched default
+
+
+def test_kronos_settings_ignore_the_other_config_files(tmp_path):
+    """The whole point: a broken watchlist/weights/risk file must not stop the
+    service, because it never reads them."""
+    path = tmp_path / "settings.yaml"
+    path.write_text("kronos:\n  model_id: X/Y\n", encoding="utf-8")
+    (tmp_path / "watchlist.yaml").write_text("this: [is, not, valid: {", encoding="utf-8")
+    (tmp_path / "weights.yaml").write_text("garbage: !!!", encoding="utf-8")
+    assert load_kronos_settings(path, env={}).model_id == "X/Y"
+
+
+def test_env_overrides_the_yaml(tmp_path):
+    path = tmp_path / "settings.yaml"
+    path.write_text("kronos:\n  model_id: from-yaml\n", encoding="utf-8")
+    s = load_kronos_settings(path, env={"KRONOS_MODEL_ID": "from-env", "KRONOS_TOP_P": "0.5"})
+    assert s.model_id == "from-env"
+    assert s.top_p == 0.5
+
+
+def test_missing_settings_file_falls_back_to_defaults(tmp_path):
+    s = load_kronos_settings(tmp_path / "nope.yaml", env={})
+    assert s.model_id == KronosSettings().model_id
+
+
+def test_unreadable_settings_file_falls_back_rather_than_crashing(tmp_path):
+    path = tmp_path / "settings.yaml"
+    path.write_text("kronos: [unclosed\n", encoding="utf-8")
+    assert load_kronos_settings(path, env={}).model_id == KronosSettings().model_id
+
+
+def test_unknown_yaml_keys_are_ignored(tmp_path):
+    """A future addition to the kronos block must not break an older service."""
+    path = tmp_path / "settings.yaml"
+    path.write_text("kronos:\n  model_id: X/Y\n  some_future_key: 12\n", encoding="utf-8")
+    assert load_kronos_settings(path, env={}).model_id == "X/Y"
+
+
+def test_sample_count_is_not_environment_overridable():
+    """It is the priced parameter — it belongs to the tier, not to config."""
+    from trading_platform.service.config import KRONOS_ENV_OVERRIDES
+
+    assert "sample_count" not in KRONOS_ENV_OVERRIDES
 
 
 def test_schema_lists_both_tiers_with_prices():

@@ -42,6 +42,24 @@ uv sync --extra kronos --extra service
 Discovery is deliberately free: a buying agent must be able to learn the price,
 the chain and the input contract *before* deciding to pay.
 
+### Environment
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `X402_ENABLED` | `0` | Master switch for metering |
+| `X402_PAY_TO` | — | Receiving address (required when enabled) |
+| `X402_NETWORK` | `eip155:84532` | CAIP-2 chain id |
+| `X402_FACILITATOR_URL` | x402.org | Use the CDP URL on mainnet |
+| `KRONOS_SERVICE_HOST` / `_PORT` | `127.0.0.1` / `8402` | Bind address |
+| `KRONOS_SERVICE_WARMUP` | `1` | Load the model before serving |
+| `KRONOS_SERVICE_MAX_QUEUE` | `8` | Load-shed threshold |
+| `KRONOS_SERVICE_TIMEOUT` | `60` | Per-request compute deadline |
+| `KRONOS_SETTINGS_FILE` | `<repo>/config/settings.yaml` | Where the `kronos:` block lives |
+| `KRONOS_MODEL_ID` and friends | from YAML | Per-field overrides — see `config.py` |
+
+`sample_count` is **not** overridable: it is the priced parameter and belongs to
+the tier.
+
 ---
 
 ## The decisions worth knowing
@@ -84,6 +102,33 @@ host that also runs your trading pipeline. `ServiceConfig` reads payment
 settings from the environment only, never the platform YAML, so the dashboard's
 Settings page can never redirect where money lands.
 
+**It warms up before serving.** `KronosForecaster` loads lazily, so without a
+warmup the first buyer after every restart pays the model-load cost inside
+their own timeout and payment window — and `Restart=on-failure` makes that
+recur after every crash. The lifespan hook loads the model and runs one
+throwaway forecast on synthetic candles (which must pass the same input gate
+real callers face) before the port serves traffic.
+
+A failed warmup does **not** crash the process: `/health` returns 503 with
+`status: degraded` and the error, so the box stays reachable for diagnosis
+instead of crash-looping under systemd. Paid endpoints keep failing closed
+through the normal 502/503 paths, so nobody is charged either way. Warmup is
+deliberately untimed — the first run on a fresh box may include a HuggingFace
+weight download, and killing that would be worse than waiting.
+
+`/health` distinguishes three states: warmup succeeded (`ok`, `model_ready`),
+warmup ran and failed (`degraded`, 503), and warmup never attempted
+(`ok`, `model_ready: false` — lazy loading via `--no-warmup` is a valid mode,
+not a fault).
+
+**It does not read the platform config.** `load_kronos_settings` parses only
+the `kronos:` block of `settings.yaml`, with per-field environment overrides.
+It deliberately avoids `core.config.load_config`, which also parses and
+validates `watchlist.yaml`, `weights.yaml` and `risk_limits.yaml` — none of
+which this service reads. A malformed file it never uses must not be able to
+stop a paid API from starting. A missing settings file is fine too: the service
+runs from environment variables alone.
+
 **Its own input gate.** `data/quality.py::validate_ohlcv` is not reused: it
 requires `adj_close` (crypto/FX have none), fails bars older than a few days
 against *today* (breaks backtesting customers deliberately scoring 2021), counts
@@ -117,8 +162,13 @@ from identical input under different sampling.
 
 ## Status
 
-`tests/test_service.py` covers the service in 33 tests — no GPU required. Two
+`tests/test_service.py` covers the service in 48 tests — no GPU required. Two
 are marked x402-only and skip unless the `service` extra is installed.
+
+The real model path is verified too: `NeoQuasar/Kronos-small` loads and produces
+a forecast through `ForecastRunner.warmup()` (CPU, x86: 4.0s load, 5.6s total).
+Re-measure on the Spark with `Kronos-base` on CUDA — those numbers set
+`KRONOS_SERVICE_TIMEOUT`.
 
 `payments.py` is written and verified against **x402 2.17.0**. The published
 docs were wrong on three points, so if you upgrade the SDK, re-check these:

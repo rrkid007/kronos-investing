@@ -49,6 +49,27 @@ class ForecastTimeout(RuntimeError):
     authorisation's maxTimeoutSeconds, or we accept payments we cannot honour."""
 
 
+def synthetic_frame(rows: int) -> pd.DataFrame:
+    """Deterministic, internally coherent OHLCV bars for the startup warmup.
+
+    Synthetic rather than a real ticker so warmup needs no network and cannot
+    fail for reasons unrelated to the model.
+    """
+    idx = pd.bdate_range(end=pd.Timestamp.today().normalize(), periods=rows)
+    t = np.arange(rows, dtype=float)
+    close = 100.0 * (1.0 + 0.02 * np.sin(t / 20.0)) + t * 0.01
+    return pd.DataFrame(
+        {
+            "open": close * 0.999,
+            "high": close * 1.004,
+            "low": close * 0.996,
+            "close": close,
+            "volume": np.full(rows, 1_000_000.0),
+        },
+        index=idx,
+    )
+
+
 def _seed_torch(seed: int) -> None:
     """Best-effort reproducibility. Not bit-exact across devices or driver
     versions — the receipt records the seed so a buyer knows what was asked
@@ -88,6 +109,16 @@ class ForecastRunner:
         self._waiting = 0
         self._cache: OrderedDict[tuple, dict] = OrderedDict()
 
+        # Readiness, reported by /health. `warmup_attempted` distinguishes
+        # "warmup ran and failed" (degraded) from "warmup was never run"
+        # (lazy loading — not a fault).
+        self.warmup_attempted = False
+        self.model_ready = False
+        self.warmup_error: str | None = None
+        self.warmup_seconds: float | None = None
+        self.device: str | None = None
+        self.load_seconds: float | None = None
+
     # --- model -------------------------------------------------------------
 
     def _get_forecaster(self):
@@ -117,20 +148,56 @@ class ForecastRunner:
 
     # --- execution ---------------------------------------------------------
 
-    def _predict_sync(self, df: pd.DataFrame, tier: Tier, seed: int | None) -> np.ndarray:
+    def _predict_sync(self, df: pd.DataFrame, sample_count: int, seed: int | None) -> np.ndarray:
         """Blocking. Runs on a worker thread, one at a time."""
         forecaster = self._get_forecaster()
         if seed is not None:
             _seed_torch(seed)
         try:
-            paths = forecaster.predict_paths(
-                df, self.settings.horizon_days, tier.sample_count
-            )
+            paths = forecaster.predict_paths(df, self.settings.horizon_days, sample_count)
         except ImportError as exc:
             raise ForecastUnavailable(str(exc)) from exc
         except Exception as exc:
             raise ForecastFailed(f"{type(exc).__name__}: {exc}") from exc
         return np.asarray(paths)
+
+    async def warmup(self) -> bool:
+        """Load the model and run one throwaway forecast. Returns readiness.
+
+        Deliberately untimed: the very first call on a fresh box may include a
+        HuggingFace weight download, and killing that would be worse than
+        waiting. Run `deploy/pull_models.sh`-style prefetch first if you want
+        startup to be fast and predictable.
+
+        Never raises — a failure is recorded and surfaced through /health, so
+        the box stays reachable for diagnosis instead of crash-looping. Paid
+        requests keep failing closed via the normal 502/503 paths.
+        """
+        self.warmup_attempted = True
+        started = time.perf_counter()
+        try:
+            async with self._gpu:
+                await asyncio.to_thread(
+                    self._predict_sync, synthetic_frame(self.settings.context_candles), 1, None
+                )
+        except Exception as exc:
+            self.model_ready = False
+            self.warmup_error = f"{type(exc).__name__}: {exc}"
+            logger.error("warmup FAILED — service will serve 503 until fixed: %s",
+                         self.warmup_error)
+            return False
+
+        forecaster = self._forecaster
+        self.device = getattr(forecaster, "device", None)
+        self.load_seconds = getattr(forecaster, "load_seconds", None)
+        self.warmup_seconds = round(time.perf_counter() - started, 2)
+        self.model_ready = True
+        self.warmup_error = None
+        logger.info(
+            "warmup ok: model=%s device=%s load=%ss total=%ss",
+            self.settings.model_id, self.device, self.load_seconds, self.warmup_seconds,
+        )
+        return True
 
     async def score(
         self,
@@ -164,7 +231,9 @@ class ForecastRunner:
         try:
             async with asyncio.timeout(self.timeout_seconds):
                 async with self._gpu:
-                    paths = await asyncio.to_thread(self._predict_sync, df, tier, seed)
+                    paths = await asyncio.to_thread(
+                        self._predict_sync, df, tier.sample_count, seed
+                    )
         except TimeoutError as exc:
             raise ForecastTimeout(
                 f"exceeded {self.timeout_seconds:.0f}s while queued or running"

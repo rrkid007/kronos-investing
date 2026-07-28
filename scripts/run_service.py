@@ -13,33 +13,42 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import uvicorn
 
-from trading_platform.core.config import load_config
 from trading_platform.service.app import create_service_app
-from trading_platform.service.config import ServiceConfig
+from trading_platform.service.config import ServiceConfig, load_kronos_settings
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config-dir", default=None)
+    parser.add_argument("--settings", default=None,
+                        help="path to a settings.yaml holding the kronos block "
+                             "(default <repo>/config/settings.yaml)")
     parser.add_argument("--host", default=None)
     parser.add_argument("--port", type=int, default=None)
+    parser.add_argument("--no-warmup", action="store_true",
+                        help="skip the startup forecast; the model then loads "
+                             "lazily on the first paid request")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
     cfg = ServiceConfig.from_env()
+    if args.settings:
+        cfg.settings_path = args.settings
+    if args.no_warmup:
+        cfg.warmup_on_startup = False
+
     host = args.host or cfg.host
     port = args.port or cfg.port
 
-    # Kronos model settings come from the platform config so the service and
-    # the pipeline forecast with the identical model; everything payment-related
-    # comes from the environment.
-    kronos_settings = load_config(args.config_dir).settings.kronos
+    # Only the `kronos:` block is read — watchlist/weights/risk_limits are the
+    # trading pipeline's concern and must not be able to block this service.
+    kronos_settings = load_kronos_settings(cfg.settings_path)
 
     app = create_service_app(kronos_settings=kronos_settings, config=cfg)
 
     mode = f"PAID on {cfg.network}" if app.state.payments_active else "FREE (payments disabled)"
-    print(f"kronos service [{mode}]: http://{host}:{port}/v1/kronos/schema")
+    print(f"kronos service [{mode}] model={kronos_settings.model_id}")
+    print(f"  http://{host}:{port}/v1/kronos/schema")
     uvicorn.run(app, host=host, port=port, log_level="info")
 
 

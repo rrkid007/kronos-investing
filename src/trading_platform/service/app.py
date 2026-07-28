@@ -13,6 +13,7 @@ Paid:  POST /v1/kronos/score, POST /v1/kronos/score/deep
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
@@ -21,7 +22,7 @@ from fastapi.responses import JSONResponse
 from trading_platform.core.config import KronosSettings
 from trading_platform.core.models import Direction
 from trading_platform.service import validation
-from trading_platform.service.config import ServiceConfig
+from trading_platform.service.config import ServiceConfig, load_kronos_settings
 from trading_platform.service.payments import attach_payments
 from trading_platform.service.runner import (
     CapacityExceeded,
@@ -66,8 +67,10 @@ def create_service_app(
     forecaster=None,
     runner: ForecastRunner | None = None,
 ) -> FastAPI:
-    settings = kronos_settings or KronosSettings()
     cfg = config or ServiceConfig.from_env()
+    # Reads only the `kronos:` block — see load_kronos_settings for why this is
+    # not core.config.load_config.
+    settings = kronos_settings or load_kronos_settings(cfg.settings_path)
 
     runner = runner or ForecastRunner(
         settings,
@@ -77,10 +80,18 @@ def create_service_app(
         cache_size=cfg.cache_size,
     )
 
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        if cfg.warmup_on_startup:
+            logger.info("warming up %s before accepting requests...", settings.model_id)
+            await runner.warmup()
+        yield
+
     app = FastAPI(
         title="Kronos Forecast Service",
         version="0.1.0",
         description="Pay-per-call Kronos price-forecast scoring over x402.",
+        lifespan=lifespan,
     )
     app.state.config = cfg
     app.state.runner = runner
@@ -93,14 +104,24 @@ def create_service_app(
     # --- free endpoints ----------------------------------------------------
 
     @app.get("/health")
-    def health() -> dict:
-        return {
-            "status": "ok",
+    def health():
+        """503 only when warmup ran and failed. If warmup was never attempted
+        the model loads lazily, which is a valid mode — not a fault."""
+        degraded = runner.warmup_attempted and not runner.model_ready
+        body = {
+            "status": "degraded" if degraded else "ok",
+            "model_ready": runner.model_ready,
+            "model_id": settings.model_id,
+            "device": runner.device,
+            "load_seconds": runner.load_seconds,
+            "warmup_seconds": runner.warmup_seconds,
+            "warmup_error": runner.warmup_error,
             "payments_active": app.state.payments_active,
             "network": cfg.network if app.state.payments_active else None,
             "queue_depth": runner._waiting,
             "queue_limit": cfg.max_queue,
         }
+        return JSONResponse(status_code=503 if degraded else 200, content=body)
 
     @app.get("/v1/kronos/schema")
     def schema() -> dict:

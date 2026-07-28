@@ -8,9 +8,66 @@ payment address. Changing where money lands requires shell access to the box.
 
 from __future__ import annotations
 
+import logging
 import os
+from pathlib import Path
 
+import yaml
 from pydantic import BaseModel
+
+from trading_platform.core.config import KronosSettings
+
+logger = logging.getLogger(__name__)
+
+# <repo>/config/settings.yaml — same depth convention as core.config.load_config.
+DEFAULT_SETTINGS_PATH = Path(__file__).resolve().parents[3] / "config" / "settings.yaml"
+
+# Per-field environment overrides. sample_count is deliberately absent: it is
+# the priced parameter and belongs to the tier, not to deployment config.
+KRONOS_ENV_OVERRIDES = {
+    "model_id": ("KRONOS_MODEL_ID", str),
+    "tokenizer_id": ("KRONOS_TOKENIZER_ID", str),
+    "horizon_days": ("KRONOS_HORIZON_DAYS", int),
+    "context_candles": ("KRONOS_CONTEXT_CANDLES", int),
+    "max_context": ("KRONOS_MAX_CONTEXT", int),
+    "temperature": ("KRONOS_TEMPERATURE", float),
+    "top_p": ("KRONOS_TOP_P", float),
+}
+
+
+def load_kronos_settings(path: Path | str | None = None, env: dict | None = None) -> KronosSettings:
+    """Read just the `kronos:` block, then apply environment overrides.
+
+    Deliberately NOT `core.config.load_config`, which also parses and validates
+    watchlist.yaml, weights.yaml and risk_limits.yaml. This service reads none
+    of those, and a malformed file it never uses must not be able to stop a paid
+    API from starting.
+
+    A missing or `kronos`-less settings file is fine — the KronosSettings
+    defaults apply, so the service can run from environment variables alone.
+    """
+    path = Path(path) if path is not None else DEFAULT_SETTINGS_PATH
+    e = env if env is not None else os.environ
+
+    values: dict = {}
+    if path.exists():
+        try:
+            loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            values = dict(loaded.get("kronos") or {})
+        except (OSError, yaml.YAMLError) as exc:
+            logger.warning("could not read %s (%s); using defaults", path, exc)
+    else:
+        logger.info("no settings file at %s; using Kronos defaults", path)
+
+    for field, (var, cast) in KRONOS_ENV_OVERRIDES.items():
+        raw = e.get(var)
+        if raw is not None and raw.strip():
+            values[field] = cast(raw.strip())
+
+    # Drop keys KronosSettings doesn't declare, so an unrelated addition to the
+    # YAML block cannot break startup.
+    known = {k: v for k, v in values.items() if k in KronosSettings.model_fields}
+    return KronosSettings(**known)
 
 # CAIP-2 chain ids. Base is the x402 default; the others are supported by the
 # CDP facilitator.
@@ -36,6 +93,13 @@ class ServiceConfig(BaseModel):
     timeout_seconds: float = 60.0
     cache_size: int = 256
 
+    # Load the model and run one throwaway forecast before serving. Without it
+    # the first buyer after every restart pays the model-load cost inside their
+    # own timeout and payment window.
+    warmup_on_startup: bool = True
+    # Where to read the `kronos:` block from. None = <repo>/config/settings.yaml.
+    settings_path: str | None = None
+
     host: str = "127.0.0.1"
     port: int = 8402
 
@@ -55,6 +119,8 @@ class ServiceConfig(BaseModel):
             max_queue=int(e.get("KRONOS_SERVICE_MAX_QUEUE") or 8),
             timeout_seconds=float(e.get("KRONOS_SERVICE_TIMEOUT") or 60.0),
             cache_size=int(e.get("KRONOS_SERVICE_CACHE_SIZE") or 256),
+            warmup_on_startup=flag("KRONOS_SERVICE_WARMUP", True),
+            settings_path=e.get("KRONOS_SETTINGS_FILE") or None,
             host=e.get("KRONOS_SERVICE_HOST") or "127.0.0.1",
             port=int(e.get("KRONOS_SERVICE_PORT") or 8402),
         )
