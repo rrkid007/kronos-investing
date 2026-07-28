@@ -1,0 +1,29 @@
+[Unit]
+Description=Kronos forecast service (x402 paid API)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rkidney
+Group=rkidney
+WorkingDirectory=/opt/trading
+# X402_ENABLED / X402_PAY_TO / X402_NETWORK / X402_FACILITATOR_URL live here
+# alongside the other secrets (chmod 600). The dashboard's secret writer
+# preserves unrelated keys, so it will not clobber them.
+EnvironmentFile=-/opt/trading/.env
+Environment=PYTHONUNBUFFERED=1
+# Binds 127.0.0.1 by default (ServiceConfig.host). Payment IS the authorisation
+# here — there is no auth layer — so do not bind 0.0.0.0 on an untrusted
+# network. Front it with a TLS reverse proxy or a tunnel when you want real
+# buyers to reach it.
+#
+# Run the venv's Python directly — never `uv run` from systemd (it rebuilds the
+# editable install into .venv on every start and trips on file permissions).
+# Same rule as trading-dashboard.service.
+ExecStart=/opt/trading/.venv/bin/python scripts/run_service.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

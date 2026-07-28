@@ -29,6 +29,14 @@ kronos = [
     "tqdm>=4.66",
 ]
 
+# Paid Kronos forecast service — x402 micropayments. Install: uv sync --extra service
+# Only needed to *meter* the service; it runs free (payments disabled) without this.
+# The evm marker is required: without it x402.mechanisms.evm.exact raises on
+# import and the paywall cannot construct its scheme.
+service = [
+    "x402[fastapi,evm]",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",
